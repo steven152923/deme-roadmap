@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#f6eaf5"/>
+<title>Deme Roadmap Companion</title>
+<style>
+:root{font-family:Inter,ui-rounded,"Segoe UI",system-ui,sans-serif;color:#5e4f67;background:#f7edf8}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 10% 0,#f8cfe2 0,transparent 34%),radial-gradient(circle at 95% 18%,#d8d0ff 0,transparent 34%),linear-gradient(160deg,#fff8fc,#eff5ff);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+button,input,select,textarea{font:inherit}button{cursor:pointer}.wrap{max-width:760px;margin:auto;padding:18px}.brand{display:flex;align-items:center;gap:10px;margin:8px 0 18px}.mark{width:40px;height:40px;border-radius:14px;background:linear-gradient(145deg,#b7a6ee,#ed9fc4);display:grid;place-items:center;color:#fff;font-weight:900;font-size:22px;box-shadow:0 9px 20px #9b79af22}.brand div{display:grid}.brand strong{font-size:16px}.brand small{font-size:11px;color:#9c8da3}
+.card{background:#fffdfedb;border:1px solid #9c7da820;border-radius:24px;box-shadow:0 14px 34px #70507a12;padding:16px;margin-bottom:14px;backdrop-filter:blur(14px)}h1,h2,h3,p{margin-top:0}h1{font-size:25px;margin-bottom:5px}.muted{color:#9a899f;font-size:13px}.tabs{display:flex;gap:7px;overflow:auto;padding-bottom:4px;margin-bottom:14px}.tabs button,.pill{border:1px solid #947aa91f;background:#fff9fd;color:#75627e;border-radius:999px;padding:9px 12px;font-size:12px;font-weight:750}.tabs button.active{background:linear-gradient(135deg,#d9cfff,#ffd3e6);color:#594764}.grid{display:grid;gap:10px}.stat-grid{grid-template-columns:repeat(3,1fr)}.stat{background:#f9f3fb;border-radius:18px;padding:12px}.stat strong{font-size:20px;display:block}.stat span{font-size:10px;color:#9b899f;text-transform:uppercase;letter-spacing:.08em}
+.item{border:1px solid #947aa917;background:#fff;border-radius:18px;padding:12px;margin-top:8px}.item strong{display:block;font-size:13px}.item small{color:#9b899f}.row{display:flex;gap:8px;align-items:center}.row>*{min-width:0}.grow{flex:1}.field{width:100%;border:1px solid #9279a522;background:#fff;border-radius:14px;padding:11px 12px;color:#594a61;outline:none}.field:focus{border-color:#b29ae6}.primary{border:0;border-radius:14px;padding:11px 14px;color:#fff;background:linear-gradient(135deg,#ac9bea,#e79bc1);font-weight:800}.ghost{border:1px solid #9279a522;border-radius:14px;padding:10px 12px;color:#6f5a78;background:#fff}.danger{color:#b75173}.status{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800}.dot{width:8px;height:8px;border-radius:50%;background:#9bc9b7;box-shadow:0 0 0 4px #9bc9b722}.hidden{display:none!important}.empty{text-align:center;color:#9b899f;padding:28px 12px}.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}.section-title h2{font-size:16px;margin:0}.code{font-size:28px;font-weight:900;letter-spacing:.16em;text-align:center;padding:10px}.locked{text-align:center;padding:24px}.locked .emoji{font-size:36px}.file input{display:none}.event-critical{border-left:4px solid #d05c7e}.event-warning{border-left:4px solid #d7a756}.monitor-online{color:#4f9b7c}.monitor-warning{color:#b88a38}.monitor-offline{color:#c65f78}@media(max-width:560px){.wrap{padding:14px}.stat-grid{grid-template-columns:1fr 1fr}.card{border-radius:21px}.desktop-only{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><div class="mark">D</div><div><strong>Deme Roadmap</strong><small>Wi-Fi companion ✦</small></div></div>
+  <section id="pairCard" class="card hidden">
+    <h1>Pair this device</h1><p class="muted">Start pairing from Deme Roadmap on your PC, then enter the code here. The token stays on this device.</p>
+    <div class="grid">
+      <input id="deviceName" class="field" placeholder="Device name" maxlength="80"/>
+      <input id="pairCode" class="field code" inputmode="numeric" placeholder="000000" maxlength="6"/>
+      <button id="pairButton" class="primary">Pair with Roadmap</button>
+      <div id="pairError" class="muted"></div>
+    </div>
+  </section>
+  <main id="app" class="hidden">
+    <div class="row" style="margin-bottom:12px"><div class="grow"><h1 style="margin:0">Connected ✦</h1><span id="connectionLabel" class="status"><i class="dot"></i> live on your Wi-Fi</span></div><button id="lockButton" class="ghost">Lock PC</button></div>
+    <div class="tabs"><button data-tab="today" class="active">Today</button><button data-tab="capture">Capture</button><button data-tab="events">Events</button><button data-tab="files">Files</button><button data-tab="control">Control</button></div>
+    <section id="tab-today"></section>
+    <section id="tab-capture" class="hidden"></section>
+    <section id="tab-events" class="hidden"></section>
+    <section id="tab-files" class="hidden"></section>
+    <section id="tab-control" class="hidden"></section>
+  </main>
+</div>
+<script>
+const state={token:localStorage.getItem('demeRoadmapToken')||'',snapshot:null,events:[],attachments:[],active:'today'};
+const $=id=>document.getElementById(id);
+const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const authHeaders=()=>state.token?{Authorization:'Bearer '+state.token}:{};
+async function api(path,options={}){
+  const headers={...authHeaders(),...(options.headers||{})};
+  const response=await fetch(path,{...options,headers});
+  if(response.status===401){unpair();throw new Error('Pairing expired.');}
+  if(response.status===423){showLocked();throw new Error('Desktop is locked.');}
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(data.error||'Request failed.');
+  return data;
+}
+function unpair(){state.token='';localStorage.removeItem('demeRoadmapToken');$('app').classList.add('hidden');$('pairCard').classList.remove('hidden');}
+function showLocked(){
+  $('app').classList.remove('hidden');$('pairCard').classList.add('hidden');
+  ['today','capture','events','files','control'].forEach(name=>$( 'tab-'+name).innerHTML=name==='today'?'<div class="card locked"><div class="emoji">🔒</div><h2>Roadmap is locked</h2><p class="muted">Unlock the desktop app to use the companion again.</p></div>':'');
+}
+function switchTab(name){
+  state.active=name;document.querySelectorAll('.tabs button').forEach(btn=>btn.classList.toggle('active',btn.dataset.tab===name));
+  ['today','capture','events','files','control'].forEach(tab=>$('tab-'+tab).classList.toggle('hidden',tab!==name));
+}
+function renderToday(){
+  const s=state.snapshot;if(!s)return;
+  const cards=s.cards.filter(c=>!c.archived && (c.today||c.stage==='progress')).slice(0,12);
+  const active=s.releases.find(r=>r.status==='active');
+  const done=active?s.cards.filter(c=>c.releaseId===active.id&&c.stage==='shipped').length:0;
+  const total=active?s.cards.filter(c=>c.releaseId===active.id&&!c.archived).length:0;
+  $('tab-today').innerHTML=`<div class="card"><div class="section-title"><div><h2>${active?esc(active.name):'No active release'}</h2><span class="muted">${active?esc(active.targetDate||'No target date'):'Pick an active release on desktop'}</span></div><span class="pill">${total?Math.round(done/total*100):0}%</span></div><div class="grid stat-grid"><div class="stat"><strong>${cards.length}</strong><span>in focus</span></div><div class="stat"><strong>${s.openBugs}</strong><span>open bugs</span></div><div class="stat"><strong>${s.eventsOpen}</strong><span>events</span></div></div></div>
+  <div class="card"><div class="section-title"><h2>What matters now</h2><span class="muted">${cards.length} items</span></div>${cards.length?cards.map(c=>`<div class="item"><strong>${esc(c.title)}</strong><small>${esc(c.area)} · ${esc(c.kind)} · ${esc(c.stage)}</small></div>`).join(''):'<div class="empty">Nothing is marked for today.</div>'}</div>
+  <div class="card"><div class="section-title"><h2>Pinned notes</h2></div>${s.notes.filter(n=>n.pinned).slice(0,4).map(n=>`<div class="item"><strong>${esc(n.title)}</strong><small>${esc((n.body||'').slice(0,120))}</small></div>`).join('')||'<div class="empty">No pinned notes.</div>'}</div>`;
+}
+function renderCapture(){
+  const releases=(state.snapshot?.releases||[]).filter(r=>r.status!=='released');
+  $('tab-capture').innerHTML=`<div class="card"><h2>Quick work</h2><div class="grid"><input id="workTitle" class="field" placeholder="What needs doing?"/><div class="row"><select id="workKind" class="field"><option value="feature">Feature</option><option value="bug">Bug</option><option value="polish">Polish</option><option value="performance">Performance</option><option value="chore">Chore</option></select><select id="workRelease" class="field"><option value="">Active / unassigned</option>${releases.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}</select></div><label class="row muted"><input id="workToday" type="checkbox"/> Put it in Today</label><button id="addWork" class="primary">Add work</button></div></div>
+  <div class="card"><h2>Quick note</h2><div class="grid"><input id="noteTitle" class="field" placeholder="Note title"/><textarea id="noteBody" class="field" rows="5" placeholder="Dump the thought here…"></textarea><button id="addNote" class="primary">Save note</button></div></div>`;
+  $('addWork').onclick=async()=>{const title=$('workTitle').value.trim();if(!title)return;await api('/api/card',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,kind:$('workKind').value,releaseId:$('workRelease').value,today:$('workToday').checked})});$('workTitle').value='';await refresh();};
+  $('addNote').onclick=async()=>{const title=$('noteTitle').value.trim();const body=$('noteBody').value.trim();if(!title&&!body)return;await api('/api/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:title||'Companion note',body})});$('noteTitle').value='';$('noteBody').value='';await refresh();};
+}
+function renderEvents(){
+  $('tab-events').innerHTML=`<div class="card"><div class="section-title"><h2>Incoming events</h2><span class="muted">${state.events.filter(e=>!e.resolved).length} open</span></div>${state.events.length?state.events.slice(0,40).map(e=>`<div class="item event-${esc(e.severity)}"><strong>${esc(e.title)}</strong><small>${esc(e.source)} · ${new Date(e.createdAt).toLocaleString()}</small><p class="muted">${esc(e.details||'')}</p></div>`).join(''):'<div class="empty">No incoming events yet.</div>'}</div>`;
+}
+function renderFiles(){
+  $('tab-files').innerHTML=`<div class="card"><h2>Drop a file onto your PC</h2><p class="muted">Uploads stay in Deme Roadmap's local attachments folder.</p><label class="primary file" style="display:inline-block">Choose file<input id="uploadFile" type="file"/></label></div><div class="card"><div class="section-title"><h2>Recent files</h2><span class="muted">${state.attachments.length}</span></div>${state.attachments.slice(0,20).map(a=>`<div class="item"><strong>${esc(a.name)}</strong><small>${Math.round(a.size/1024)} KB · ${new Date(a.createdAt).toLocaleString()}</small></div>`).join('')||'<div class="empty">No files yet.</div>'}</div>`;
+  $('uploadFile').onchange=async event=>{const file=event.target.files?.[0];if(!file)return;if(file.size>MAX_FILE_JS){alert('Keep companion uploads under 20 MB.');return;}const base64=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]||'');r.onerror=reject;r.readAsDataURL(file)});await api('/api/attachment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:file.name,mime:file.type,dataBase64:base64,source:'companion'})});await refresh();};
+}
+function renderControl(){
+  const monitors=state.snapshot?.monitors||[];
+  $('tab-control').innerHTML=`<div class="card"><h2>Production control</h2><p class="muted">Service monitors configured on the desktop show up here.</p>${monitors.map(m=>`<div class="item"><div class="row"><div class="grow"><strong>${esc(m.name)}</strong><small>${esc(m.url)}</small></div><span class="status monitor-${esc(m.state)}">${esc(m.state)}${m.latencyMs?` · ${m.latencyMs}ms`:''}</span></div></div>`).join('')||'<div class="empty">Add a monitor from the desktop Connected Hub.</div>'}</div>`;
+}
+async function refresh(){
+  if(!state.token)return;
+  try{
+    const [snapshot,events,attachments]=await Promise.all([api('/api/snapshot'),api('/api/events'),api('/api/attachments')]);
+    state.snapshot=snapshot;state.events=events.events||[];state.attachments=attachments.attachments||[];
+    $('app').classList.remove('hidden');$('pairCard').classList.add('hidden');
+    renderToday();renderCapture();renderEvents();renderFiles();renderControl();
+  }catch(error){if(!String(error.message).includes('locked'))console.warn(error);}
+}
+function connectStream(){
+  if(!state.token)return;
+  const source=new EventSource('/api/stream?token='+encodeURIComponent(state.token));
+  source.onmessage=()=>refresh();
+  source.onerror=()=>{source.close();setTimeout(connectStream,3000)};
+}
+$('pairButton').onclick=async()=>{
+  $('pairError').textContent='';
+  try{
+    const response=await fetch('/api/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:$('pairCode').value.trim(),name:$('deviceName').value.trim()||navigator.userAgent.slice(0,60)})});
+    const data=await response.json();if(!response.ok)throw new Error(data.error||'Pairing failed.');
+    state.token=data.token;localStorage.setItem('demeRoadmapToken',state.token);await refresh();connectStream();
+  }catch(error){$('pairError').textContent=error.message;}
+};
+$('lockButton').onclick=async()=>{if(confirm('Lock Deme Roadmap on the PC?')){await api('/api/lock',{method:'POST'});showLocked();}};
+document.querySelectorAll('.tabs button').forEach(btn=>btn.onclick=()=>switchTab(btn.dataset.tab));
+const params=new URLSearchParams(location.search);if(params.get('pair'))$('pairCode').value=params.get('pair');$('deviceName').value=navigator.userAgent.includes('iPhone')?'iPhone':navigator.userAgent.includes('Android')?'Android device':'Companion device';
+const MAX_FILE_JS=__MAX_ATTACHMENT__;
+if(state.token){refresh().then(connectStream)}else{$('pairCard').classList.remove('hidden')}
+</script>
+</body>
+</html>

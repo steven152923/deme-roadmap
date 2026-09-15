@@ -2,10 +2,17 @@ const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const crypto = require('node:crypto');
+const { startLanServer } = require('./lan-server.cjs');
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
 let mainWindow = null;
 let sessionUnlocked = false;
+let lanServer = null;
+
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
 
 function roadmapPath() { return path.join(app.getPath('userData'), 'roadmap.json'); }
 function securityPath() { return path.join(app.getPath('userData'), 'security.json'); }
@@ -108,6 +115,19 @@ async function readRoadmap(fallback) {
   }
 }
 
+const BACKEND_FALLBACK = {
+  version: 5,
+  cards: [],
+  releases: [],
+  settings: { areas: ['Core'], themePreset: 'candy' },
+  activity: [],
+  inbox: [],
+  notes: [],
+  decisions: [],
+  launchPlans: [],
+  focusSessions: [],
+};
+
 function showWindow() {
   if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
   mainWindow.show();
@@ -136,6 +156,17 @@ function applyWindowTheme(theme) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.setBackgroundColor(choice.background);
   if (typeof mainWindow.setTitleBarOverlay === 'function') mainWindow.setTitleBarOverlay({ color: choice.overlay, symbolColor: choice.symbols, height: 44 });
+}
+
+function sendToRenderer(channel, payload) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send(channel, payload);
+}
+
+async function lockFromCompanion() {
+  sessionUnlocked = false;
+  sendToRenderer('security:locked-remotely');
+  await logStartup('Workspace locked from a paired Wi-Fi companion.');
 }
 
 function createWindow() {
@@ -189,6 +220,15 @@ function createWindow() {
   loadPromise.catch((error) => reportRendererFailure('Deme Roadmap could not load its interface.', error.message || String(error)));
 }
 
+function requireLanServer() {
+  if (!lanServer) {
+    const error = new Error('The Connected Workspace backend is not running.');
+    error.code = 'LAN_BACKEND_OFFLINE';
+    throw error;
+  }
+  return lanServer;
+}
+
 ipcMain.handle('security:status', async () => {
   const config = await readSecurity();
   return { configured: config.configured, unlocked: config.configured ? sessionUnlocked : false, autoLockMinutes: config.autoLockMinutes };
@@ -201,6 +241,7 @@ ipcMain.handle('security:setup', async (_event, passcode) => {
   const hash = await derivePasscode(passcode, salt);
   await writeSecurity({ version: 1, configured: true, salt: salt.toString('hex'), hash: hash.toString('hex'), autoLockMinutes: 15 });
   sessionUnlocked = true;
+  lanServer?.broadcast('desktop-unlocked');
   await logStartup('Roadmap passcode configured.');
   return { ok: true };
 });
@@ -210,9 +251,14 @@ ipcMain.handle('security:verify', async (_event, passcode) => {
   if (!config.configured) return { ok: false, error: 'No passcode has been configured yet.' };
   const ok = await verifyPasscode(passcode, config);
   sessionUnlocked = ok;
+  if (ok) lanServer?.broadcast('desktop-unlocked');
   return ok ? { ok: true } : { ok: false, error: 'That passcode is not correct.' };
 });
-ipcMain.handle('security:lock', async () => { sessionUnlocked = false; return { ok: true }; });
+ipcMain.handle('security:lock', async () => {
+  sessionUnlocked = false;
+  lanServer?.broadcast('desktop-locked');
+  return { ok: true };
+});
 ipcMain.handle('security:change', async (_event, currentPasscode, nextPasscode) => {
   requireUnlocked();
   const config = await readSecurity();
@@ -235,7 +281,12 @@ ipcMain.handle('security:auto-lock', async (_event, minutes) => {
 ipcMain.handle('window:set-theme', (_event, theme) => { applyWindowTheme(theme); return { ok: true }; });
 
 ipcMain.handle('roadmap:load', async (_event, fallback) => { requireUnlocked(); return readRoadmap(fallback); });
-ipcMain.handle('roadmap:save', async (_event, data) => { requireUnlocked(); await writeRoadmap(data); return { ok: true }; });
+ipcMain.handle('roadmap:save', async (_event, data) => {
+  requireUnlocked();
+  await writeRoadmap(data);
+  lanServer?.broadcast('roadmap-changed', { source: 'desktop' });
+  return { ok: true };
+});
 ipcMain.handle('roadmap:export', async (_event, data) => {
   requireUnlocked();
   const result = await dialog.showSaveDialog(mainWindow, { title: 'Back up Deme Roadmap', defaultPath: `deme-roadmap-backup-${new Date().toISOString().slice(0, 10)}.json`, filters: [{ name: 'JSON', extensions: ['json'] }] });
@@ -250,18 +301,65 @@ ipcMain.handle('roadmap:import', async () => {
   const parsed = JSON.parse(await fs.readFile(result.filePaths[0], 'utf8'));
   if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.cards)) throw new Error('That file is not a Deme Roadmap backup.');
   await writeRoadmap(parsed);
+  lanServer?.broadcast('roadmap-changed', { source: 'restore' });
   return { canceled: false, data: parsed };
 });
 ipcMain.handle('roadmap:data-path', () => { requireUnlocked(); return roadmapPath(); });
 ipcMain.handle('roadmap:reveal-data', () => { requireUnlocked(); shell.showItemInFolder(roadmapPath()); return { ok: true }; });
 
+ipcMain.handle('network:status', () => lanServer ? lanServer.status() : { running: false, port: 0, addresses: [], primaryUrl: '', loopbackUrl: '', hookUrl: '', pairedDevices: 0, devices: [], monitors: [], eventsOpen: 0, attachmentsCount: 0 });
+ipcMain.handle('network:create-pairing', async () => { requireUnlocked(); return requireLanServer().createPairing(); });
+ipcMain.handle('network:list-devices', () => { requireUnlocked(); return requireLanServer().listDevices(); });
+ipcMain.handle('network:revoke-device', async (_event, deviceId) => { requireUnlocked(); return requireLanServer().revokeDevice(String(deviceId || '')); });
+ipcMain.handle('network:events', () => { requireUnlocked(); return requireLanServer().listEvents(); });
+ipcMain.handle('network:resolve-event', async (_event, eventId, resolved) => { requireUnlocked(); return requireLanServer().resolveEvent(String(eventId || ''), resolved !== false); });
+ipcMain.handle('network:delete-event', async (_event, eventId) => { requireUnlocked(); return requireLanServer().deleteEvent(String(eventId || '')); });
+ipcMain.handle('network:attachments', () => { requireUnlocked(); return requireLanServer().listAttachments(); });
+ipcMain.handle('network:choose-attachment', async () => { requireUnlocked(); return requireLanServer().chooseAttachment(mainWindow); });
+ipcMain.handle('network:delete-attachment', async (_event, attachmentId) => { requireUnlocked(); return requireLanServer().deleteAttachment(String(attachmentId || '')); });
+ipcMain.handle('network:reveal-attachment', async (_event, attachmentId) => { requireUnlocked(); return requireLanServer().revealAttachment(String(attachmentId || '')); });
+ipcMain.handle('network:monitors', () => { requireUnlocked(); return requireLanServer().listMonitors(); });
+ipcMain.handle('network:add-monitor', async (_event, name, url) => { requireUnlocked(); return requireLanServer().addMonitor(name, url); });
+ipcMain.handle('network:remove-monitor', async (_event, monitorId) => { requireUnlocked(); return requireLanServer().removeMonitor(String(monitorId || '')); });
+ipcMain.handle('network:check-monitors', async () => { requireUnlocked(); return requireLanServer().checkMonitors(); });
+ipcMain.handle('network:open-companion', async () => { requireUnlocked(); return requireLanServer().openCompanion(); });
+
 process.on('uncaughtException', (error) => logStartup(`Main-process uncaught exception: ${error.stack || error.message || String(error)}`));
 process.on('unhandledRejection', (reason) => logStartup(`Main-process unhandled rejection: ${reason instanceof Error ? reason.stack || reason.message : String(reason)}`));
 
-app.whenReady().then(() => {
-  app.setAppUserModelId('com.demeapp.roadmap');
-  logStartup(`Starting Deme Roadmap ${app.getVersion()} on ${process.platform} ${process.arch}`);
-  createWindow();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-});
+if (gotSingleInstanceLock) {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+
+  app.whenReady().then(async () => {
+    app.setAppUserModelId('com.demeapp.roadmap');
+    await logStartup(`Starting Deme Roadmap ${app.getVersion()} on ${process.platform} ${process.arch}`);
+    createWindow();
+    try {
+      lanServer = await startLanServer({
+        app,
+        dialog,
+        shell,
+        isUnlocked: () => sessionUnlocked,
+        readRoadmap: () => readRoadmap(BACKEND_FALLBACK),
+        writeRoadmap,
+        notifyRoadmapChanged: () => sendToRenderer('roadmap:external-change'),
+        notifyNetworkChanged: () => sendToRenderer('network:changed'),
+        lockSession: lockFromCompanion,
+        log: logStartup,
+      });
+      sendToRenderer('network:changed');
+    } catch (error) {
+      await logStartup(`Connected Workspace backend failed to start: ${error.stack || error.message || String(error)}`);
+      sendToRenderer('network:changed');
+    }
+    app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  });
+}
+
+app.on('before-quit', () => { lanServer?.stop().catch(() => undefined); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
