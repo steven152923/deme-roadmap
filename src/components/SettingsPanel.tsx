@@ -40,7 +40,7 @@ export function SettingsPanel({ settings, dataPath, onChange, onBackup, onRestor
         <div className="settings-data-actions"><button type="button" onClick={onBackup}><Download size={16} /> Back up roadmap</button><button type="button" onClick={onRestore}><Upload size={16} /> Restore backup</button></div>
       </section>
 
-      <section className="about-card"><div className="about-mark"><span>D</span><i /></div><div><span>Deme Roadmap</span><strong>Version 0.4.0</strong><small>Release-board era · local-first Windows build</small></div></section>
+      <section className="about-card"><div className="about-mark"><span>D</span><i /></div><div><span>Deme Roadmap</span><strong>Version 0.4.1</strong><small>Startup patch · QA workspace · local-first Windows build</small></div></section>
     </div>
   );
 }
