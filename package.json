@@ -1,10 +1,10 @@
 {
   "name": "deme-roadmap",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "author": "Deme App LTD",
-  "description": "A calm, local-first Windows roadmap app for Deme.",
+  "description": "A clean, local-first Windows roadmap and release planning app for Deme.",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",

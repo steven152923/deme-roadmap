@@ -1,102 +1,76 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Archive,
-  ArrowRight,
-  CalendarDays,
-  Check,
-  CircleDot,
-  ClipboardCheck,
   Columns3,
-  DatabaseBackup,
-  Download,
-  GripVertical,
-  Inbox,
+  Command,
   LayoutDashboard,
-  ListChecks,
+  List,
+  Map,
   PackageCheck,
   Plus,
-  RotateCcw,
   Search,
-  Sparkles,
-  Trash2,
-  Upload,
-  X,
+  Settings,
 } from 'lucide-react';
-import { DEFAULT_ROADMAP } from './defaultData';
-import type { ChecklistItem, Priority, RoadmapCard, RoadmapData, Stage } from './types';
+import { CardEditor } from './components/CardEditor';
+import { FilterBar } from './components/FilterBar';
+import { CommandPalette, QuickCapture, ReleaseEditor, type QuickCaptureValue } from './components/Overlays';
+import { ArchiveView, BoardView, FocusView, ListView, ReleasesView, SettingsView, TimelineView } from './components/Views';
+import { STAGE_LABEL, VIEW_TITLES } from './constants';
+import { DEFAULT_ROADMAP, newCard, newRelease, normaliseRoadmap, uid } from './data';
+import type { ActivityEntry, RoadmapCard, RoadmapData, RoadmapRelease, Stage, ViewId } from './types';
+import { EMPTY_FILTERS, type RoadmapFilters } from './uiTypes';
+import { isDueSoon, isOverdue, matchesSearch, sortByOrder } from './utils';
 
-type View = 'focus' | 'board' | 'releases' | 'archive';
-
-const STAGES: { id: Stage; label: string; hint: string }[] = [
-  { id: 'ideas', label: 'Ideas', hint: 'Worth remembering' },
-  { id: 'planned', label: 'Planned', hint: 'Ready when you are' },
-  { id: 'progress', label: 'In progress', hint: 'Being built now' },
-  { id: 'testing', label: 'Testing', hint: 'Needs a proper poke' },
-  { id: 'shipped', label: 'Shipped', hint: 'Out in the world' },
-];
-
-const STAGE_LABEL = Object.fromEntries(STAGES.map((stage) => [stage.id, stage.label])) as Record<Stage, string>;
-const AREAS = ['Core', 'Home', 'Communities', 'Profiles', 'Chats', 'Journals', 'Safety', 'Premium', 'Performance', 'Polish'];
-
-function uid() {
-  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+function activity(type: ActivityEntry['type'], message: string, cardId?: string): ActivityEntry {
+  return { id: uid('activity'), type, message, cardId, createdAt: new Date().toISOString() };
 }
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+function appendActivity(entries: ActivityEntry[], entry: ActivityEntry) {
+  return [...entries.slice(-249), entry];
 }
 
-function formatDate(value: string) {
-  if (!value) return '';
-  const date = new Date(`${value}T12:00:00`);
-  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(date);
+function maxOrder(cards: RoadmapCard[], stage: Stage) {
+  return Math.max(0, ...cards.filter((card) => !card.archived && card.stage === stage).map((card) => card.sortOrder)) + 1000;
 }
 
-function makeCard(stage: Stage): RoadmapCard {
-  const now = new Date().toISOString();
-  return {
-    id: uid(),
-    title: 'Untitled idea',
-    description: '',
-    stage,
-    area: 'Core',
-    priority: 'normal',
-    release: '',
-    targetDate: '',
-    checklist: [],
-    archived: false,
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
-function matchesSearch(card: RoadmapCard, search: string) {
-  if (!search.trim()) return true;
-  const haystack = [card.title, card.description, card.area, card.release, STAGE_LABEL[card.stage]].join(' ').toLowerCase();
-  return haystack.includes(search.trim().toLowerCase());
-}
-
-function checklistProgress(card: RoadmapCard) {
-  if (!card.checklist.length) return null;
-  return `${card.checklist.filter((item) => item.done).length}/${card.checklist.length}`;
+function applyFilters(card: RoadmapCard, filters: RoadmapFilters, data: RoadmapData, search: string) {
+  if (!matchesSearch(card, data.releases, search)) return false;
+  if (filters.area !== 'all' && card.area !== filters.area) return false;
+  if (filters.priority !== 'all' && card.priority !== filters.priority) return false;
+  if (filters.releaseId === 'none' && card.releaseId) return false;
+  if (filters.releaseId !== 'all' && filters.releaseId !== 'none' && card.releaseId !== filters.releaseId) return false;
+  if (filters.due === 'overdue' && !isOverdue(card)) return false;
+  if (filters.due === 'soon' && !isDueSoon(card, data.settings.dueSoonDays)) return false;
+  if (filters.due === 'unscheduled' && card.targetDate) return false;
+  if (filters.label && !card.labels.includes(filters.label)) return false;
+  return true;
 }
 
 export default function App() {
   const [data, setData] = useState<RoadmapData>(DEFAULT_ROADMAP);
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState<'saved' | 'saving' | 'error'>('saved');
-  const [view, setView] = useState<View>('focus');
+  const [view, setView] = useState<ViewId>('focus');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [releaseEditorId, setReleaseEditorId] = useState<string | null>(null);
+  const [quickCaptureOpen, setQuickCaptureOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [filters, setFilters] = useState<RoadmapFilters>(EMPTY_FILTERS);
   const [toast, setToast] = useState('');
+  const [dataPath, setDataPath] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let active = true;
     async function load() {
       try {
-        const next = window.demeRoadmap ? await window.demeRoadmap.load(DEFAULT_ROADMAP) : DEFAULT_ROADMAP;
-        if (active) setData(next);
+        const raw = window.demeRoadmap ? await window.demeRoadmap.load(DEFAULT_ROADMAP) : DEFAULT_ROADMAP;
+        const next = normaliseRoadmap(raw);
+        if (!active) return;
+        setData(next);
+        setView(next.settings.startView);
+        if (window.demeRoadmap) window.demeRoadmap.dataPath().then((path) => active && setDataPath(path)).catch(() => undefined);
       } catch {
         if (active) setData(DEFAULT_ROADMAP);
       } finally {
@@ -104,23 +78,21 @@ export default function App() {
       }
     }
     load();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
     if (!loaded || !window.demeRoadmap) return;
     setSaveState('saving');
-    const timeout = window.setTimeout(async () => {
+    const timer = window.setTimeout(async () => {
       try {
         await window.demeRoadmap?.save(data);
         setSaveState('saved');
       } catch {
         setSaveState('error');
       }
-    }, 350);
-    return () => window.clearTimeout(timeout);
+    }, 320);
+    return () => window.clearTimeout(timer);
   }, [data, loaded]);
 
   useEffect(() => {
@@ -128,68 +100,239 @@ export default function App() {
       const modifier = event.ctrlKey || event.metaKey;
       if (modifier && event.key.toLowerCase() === 'k') {
         event.preventDefault();
-        searchRef.current?.focus();
+        setCommandOpen(true);
       }
       if (modifier && event.key.toLowerCase() === 'n') {
         event.preventDefault();
-        createCard(view === 'board' ? 'ideas' : 'planned');
+        setQuickCaptureOpen(true);
       }
-      if (event.key === 'Escape') setSelectedId(null);
+      if (modifier && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+      if (event.key === 'Escape' && !commandOpen && !quickCaptureOpen) {
+        setSelectedId(null);
+        setReleaseEditorId(null);
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  });
+  }, [commandOpen, quickCaptureOpen]);
 
   useEffect(() => {
     if (!toast) return;
-    const timer = window.setTimeout(() => setToast(''), 2600);
+    const timer = window.setTimeout(() => setToast(''), 2400);
     return () => window.clearTimeout(timer);
   }, [toast]);
 
   const selected = selectedId ? data.cards.find((card) => card.id === selectedId) ?? null : null;
-  const activeCards = useMemo(() => data.cards.filter((card) => !card.archived && matchesSearch(card, search)), [data.cards, search]);
-  const archivedCards = useMemo(() => data.cards.filter((card) => card.archived && matchesSearch(card, search)), [data.cards, search]);
+  const editedRelease = releaseEditorId ? data.releases.find((release) => release.id === releaseEditorId) ?? null : null;
+  const activeCards = useMemo(() => data.cards.filter((card) => !card.archived), [data.cards]);
+  const visibleCards = useMemo(
+    () => activeCards.filter((card) => applyFilters(card, filters, data, search)),
+    [activeCards, filters, data, search],
+  );
+  const archivedCards = useMemo(
+    () => data.cards.filter((card) => card.archived && matchesSearch(card, data.releases, search)),
+    [data.cards, data.releases, search],
+  );
+  const labels = useMemo(() => Array.from(new Set(activeCards.flatMap((card) => card.labels))).sort(), [activeCards]);
+  const totalOpen = activeCards.filter((card) => card.stage !== 'shipped').length;
+  const activeRelease = data.releases.find((release) => release.status === 'active') ?? null;
+  const title = VIEW_TITLES[view];
+  const showFilters = view === 'board' || view === 'timeline' || view === 'list';
 
-  function createCard(stage: Stage) {
-    const card = makeCard(stage);
-    setData((current) => ({ ...current, cards: [...current.cards, card] }));
-    setSelectedId(card.id);
+  function createItem(stage: Stage, openEditor = true, patch: Partial<RoadmapCard> = {}) {
+    const card = { ...newCard(stage, data.settings.areas[0] ?? 'Core', maxOrder(data.cards, stage)), ...patch };
+    setData((current) => ({
+      ...current,
+      cards: [...current.cards, card],
+      activity: appendActivity(current.activity, activity('created', `Created “${card.title}”`, card.id)),
+    }));
+    if (openEditor) setSelectedId(card.id);
+    return card.id;
+  }
+
+  function createQuick(value: QuickCaptureValue) {
+    const id = createItem(value.stage, false, {
+      title: value.title,
+      area: value.area,
+      priority: value.priority,
+      releaseId: value.releaseId,
+      targetDate: value.targetDate,
+    });
+    setQuickCaptureOpen(false);
+    setToast('Added to roadmap');
+    if (value.stage === 'progress' || value.stage === 'testing') setSelectedId(id);
   }
 
   function updateCard(id: string, patch: Partial<RoadmapCard>) {
-    setData((current) => ({
-      ...current,
-      cards: current.cards.map((card) =>
-        card.id === id ? { ...card, ...patch, updatedAt: new Date().toISOString() } : card,
-      ),
-    }));
+    setData((current) => {
+      const before = current.cards.find((card) => card.id === id);
+      if (!before) return current;
+      const nextPatch = { ...patch, updatedAt: new Date().toISOString() };
+      let nextActivity = current.activity;
+      if (patch.stage && patch.stage !== before.stage) {
+        nextActivity = appendActivity(nextActivity, activity('moved', `Moved “${before.title}” to ${STAGE_LABEL[patch.stage]}`, id));
+      }
+      return {
+        ...current,
+        cards: current.cards.map((card) => card.id === id ? { ...card, ...nextPatch } : card),
+        activity: nextActivity,
+      };
+    });
+  }
+
+  function moveCard(id: string, stage: Stage) {
+    setData((current) => {
+      const card = current.cards.find((item) => item.id === id);
+      if (!card || (card.stage === stage && card.sortOrder === maxOrder(current.cards, stage))) return current;
+      const order = maxOrder(current.cards.filter((item) => item.id !== id), stage);
+      const moved = { ...card, stage, sortOrder: order, updatedAt: new Date().toISOString() };
+      return {
+        ...current,
+        cards: current.cards.map((item) => item.id === id ? moved : item),
+        activity: card.stage === stage ? current.activity : appendActivity(current.activity, activity('moved', `Moved “${card.title}” to ${STAGE_LABEL[stage]}`, id)),
+      };
+    });
+  }
+
+  function reorderCard(sourceId: string, targetId: string) {
+    setData((current) => {
+      const source = current.cards.find((card) => card.id === sourceId);
+      const target = current.cards.find((card) => card.id === targetId);
+      if (!source || !target || source.id === target.id) return current;
+      const stageCards = sortByOrder(current.cards.filter((card) => !card.archived && card.stage === target.stage && card.id !== source.id));
+      const targetIndex = Math.max(0, stageCards.findIndex((card) => card.id === target.id));
+      stageCards.splice(targetIndex, 0, { ...source, stage: target.stage });
+      const orderMap = new Map(stageCards.map((card, index) => [card.id, (index + 1) * 1000]));
+      const stageChanged = source.stage !== target.stage;
+      return {
+        ...current,
+        cards: current.cards.map((card) => orderMap.has(card.id) ? { ...card, stage: target.stage, sortOrder: orderMap.get(card.id)!, updatedAt: card.id === source.id ? new Date().toISOString() : card.updatedAt } : card),
+        activity: stageChanged ? appendActivity(current.activity, activity('moved', `Moved “${source.title}” to ${STAGE_LABEL[target.stage]}`, source.id)) : current.activity,
+      };
+    });
   }
 
   function archiveCard(id: string) {
-    updateCard(id, { archived: true });
+    setData((current) => {
+      const card = current.cards.find((item) => item.id === id);
+      if (!card) return current;
+      return {
+        ...current,
+        cards: current.cards.map((item) => item.id === id ? { ...item, archived: true, updatedAt: new Date().toISOString() } : item),
+        activity: appendActivity(current.activity, activity('archived', `Archived “${card.title}”`, id)),
+      };
+    });
     setSelectedId(null);
     setToast('Moved to archive');
   }
 
   function restoreCard(id: string) {
-    updateCard(id, { archived: false });
-    setToast('Restored to the board');
+    setData((current) => {
+      const card = current.cards.find((item) => item.id === id);
+      if (!card) return current;
+      return {
+        ...current,
+        cards: current.cards.map((item) => item.id === id ? { ...item, archived: false, updatedAt: new Date().toISOString() } : item),
+        activity: appendActivity(current.activity, activity('restored', `Restored “${card.title}”`, id)),
+      };
+    });
+    setToast('Restored');
   }
 
   function deleteCard(id: string) {
-    setData((current) => ({ ...current, cards: current.cards.filter((card) => card.id !== id) }));
+    const card = data.cards.find((item) => item.id === id);
+    if (!card) return;
+    if (data.settings.confirmPermanentDelete && !window.confirm(`Delete “${card.title}” permanently? This cannot be undone.`)) return;
+    setData((current) => ({
+      ...current,
+      cards: current.cards
+        .filter((item) => item.id !== id)
+        .map((item) => item.blockedBy.includes(id) ? { ...item, blockedBy: item.blockedBy.filter((dependency) => dependency !== id) } : item),
+    }));
     setSelectedId(null);
-    setToast('Deleted');
+    setToast('Deleted permanently');
   }
 
-  function moveCard(id: string, stage: Stage) {
-    updateCard(id, { stage });
+  function duplicateCard(id: string) {
+    const source = data.cards.find((card) => card.id === id);
+    if (!source) return;
+    const now = new Date().toISOString();
+    const copy: RoadmapCard = {
+      ...source,
+      id: uid('card'),
+      title: `${source.title} copy`,
+      blockedBy: [...source.blockedBy],
+      labels: [...source.labels],
+      checklist: source.checklist.map((item) => ({ ...item, id: uid('check') })),
+      links: source.links.map((link) => ({ ...link, id: uid('link') })),
+      updates: [],
+      archived: false,
+      pinned: false,
+      sortOrder: maxOrder(data.cards, source.stage),
+      createdAt: now,
+      updatedAt: now,
+    };
+    setData((current) => ({ ...current, cards: [...current.cards, copy], activity: appendActivity(current.activity, activity('created', `Duplicated “${source.title}”`, copy.id)) }));
+    setSelectedId(copy.id);
+  }
+
+  function createRelease() {
+    const release = newRelease(`Version ${data.releases.length + 1}`);
+    setData((current) => ({ ...current, releases: [...current.releases, release], activity: appendActivity(current.activity, activity('release', `Created release “${release.name}”`)) }));
+    setReleaseEditorId(release.id);
+  }
+
+  function updateRelease(id: string, patch: Partial<RoadmapRelease>) {
+    setData((current) => {
+      const before = current.releases.find((release) => release.id === id);
+      if (!before) return current;
+      let releases = current.releases.map((release) => release.id === id ? { ...release, ...patch, updatedAt: new Date().toISOString() } : release);
+      if (patch.status === 'active') releases = releases.map((release) => release.id !== id && release.status === 'active' ? { ...release, status: 'planned', updatedAt: new Date().toISOString() } : release);
+      const nextName = typeof patch.name === 'string' && patch.name.trim() ? patch.name.trim() : before.name;
+      const nextActivity = patch.status && patch.status !== before.status
+        ? appendActivity(current.activity, activity('release', `${nextName} is now ${patch.status}`))
+        : current.activity;
+      return { ...current, releases, activity: nextActivity };
+    });
+  }
+
+  function deleteRelease(id: string) {
+    const release = data.releases.find((item) => item.id === id);
+    if (!release) return;
+    if (!window.confirm(`Delete release “${release.name}”? Items in it will stay on the roadmap but become unassigned.`)) return;
+    setData((current) => ({
+      ...current,
+      releases: current.releases.filter((item) => item.id !== id),
+      cards: current.cards.map((card) => card.releaseId === id ? { ...card, releaseId: '', updatedAt: new Date().toISOString() } : card),
+      activity: appendActivity(current.activity, activity('release', `Deleted release “${release.name}”`)),
+    }));
+    setReleaseEditorId(null);
+    setToast('Release deleted');
+  }
+
+  function changeSettings(patch: Partial<RoadmapData['settings']>) {
+    setData((current) => {
+      const settings = { ...current.settings, ...patch };
+      let cards = current.cards;
+      if (patch.areas && patch.areas.length) {
+        const fallback = patch.areas[0];
+        cards = cards.map((card) => patch.areas!.includes(card.area) ? card : { ...card, area: fallback, updatedAt: new Date().toISOString() });
+      }
+      return { ...current, settings, cards };
+    });
   }
 
   async function exportBackup() {
     if (!window.demeRoadmap) return;
-    const result = await window.demeRoadmap.exportBackup(data);
-    if (!result.canceled) setToast('Backup saved');
+    try {
+      const result = await window.demeRoadmap.exportBackup(data);
+      if (!result.canceled) setToast('Backup saved');
+    } catch {
+      setToast('Could not save backup');
+    }
   }
 
   async function importBackup() {
@@ -197,8 +340,11 @@ export default function App() {
     try {
       const result = await window.demeRoadmap.importBackup();
       if (!result.canceled && result.data) {
-        setData(result.data);
+        const next = normaliseRoadmap(result.data);
+        setData(next);
+        setView(next.settings.startView);
         setSelectedId(null);
+        setReleaseEditorId(null);
         setToast('Backup restored');
       }
     } catch {
@@ -206,77 +352,87 @@ export default function App() {
     }
   }
 
-  const totalOpen = data.cards.filter((card) => !card.archived && card.stage !== 'shipped').length;
-  const inProgress = data.cards.filter((card) => !card.archived && card.stage === 'progress').length;
-  const testing = data.cards.filter((card) => !card.archived && card.stage === 'testing').length;
+  async function revealData() {
+    try {
+      await window.demeRoadmap?.revealData();
+    } catch {
+      setToast('Could not open the data folder');
+    }
+  }
+
+  function navigate(next: ViewId) {
+    setView(next);
+    setSelectedId(null);
+    setReleaseEditorId(null);
+  }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell v2-shell">
       <div className="window-drag-region" />
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark" aria-hidden="true">
-            <img src="./deme-logo-final-transparent.png" alt="" onError={(event) => event.currentTarget.classList.add('logo-missing')} />
-            <span>D</span>
-          </div>
-          <div>
-            <strong>Deme</strong>
-            <small>Roadmap</small>
-          </div>
-        </div>
+      <aside className="sidebar v2-sidebar">
+        <DemeBrand />
 
         <nav className="nav-stack" aria-label="Roadmap views">
-          <NavButton active={view === 'focus'} icon={<LayoutDashboard size={18} />} label="Focus" onClick={() => setView('focus')} />
-          <NavButton active={view === 'board'} icon={<Columns3 size={18} />} label="Board" count={totalOpen} onClick={() => setView('board')} />
-          <NavButton active={view === 'releases'} icon={<PackageCheck size={18} />} label="Releases" onClick={() => setView('releases')} />
-          <NavButton active={view === 'archive'} icon={<Archive size={18} />} label="Archive" onClick={() => setView('archive')} />
+          <NavButton active={view === 'focus'} icon={<LayoutDashboard size={18} />} label="Focus" onClick={() => navigate('focus')} />
+          <NavButton active={view === 'board'} icon={<Columns3 size={18} />} label="Board" count={totalOpen} onClick={() => navigate('board')} />
+          <NavButton active={view === 'timeline'} icon={<Map size={18} />} label="Roadmap" onClick={() => navigate('timeline')} />
+          <NavButton active={view === 'releases'} icon={<PackageCheck size={18} />} label="Releases" count={data.releases.filter((release) => release.status !== 'released').length} onClick={() => navigate('releases')} />
+          <NavButton active={view === 'list'} icon={<List size={18} />} label="All items" onClick={() => navigate('list')} />
+          <NavButton active={view === 'archive'} icon={<Archive size={18} />} label="Archive" count={data.cards.filter((card) => card.archived).length} onClick={() => navigate('archive')} />
         </nav>
 
         <div className="sidebar-spacer" />
 
-        <div className="mini-stats">
-          <div><span>Building</span><strong>{inProgress}</strong></div>
-          <div><span>Testing</span><strong>{testing}</strong></div>
-        </div>
+        {activeRelease && (
+          <button className="sidebar-release" type="button" onClick={() => navigate('releases')}>
+            <span className="live-dot" />
+            <span><small>Active release</small><strong>{activeRelease.name}</strong></span>
+          </button>
+        )}
 
-        <div className="sidebar-tools">
-          <button type="button" onClick={exportBackup}><Download size={16} /> Back up</button>
-          <button type="button" onClick={importBackup}><Upload size={16} /> Restore</button>
-        </div>
-        <div className={`save-state ${saveState}`}>
-          <span /> {saveState === 'saving' ? 'Saving locally…' : saveState === 'error' ? 'Couldn’t save' : 'Saved on this PC'}
-        </div>
+        <button className={`nav-button settings-nav ${view === 'settings' ? 'active' : ''}`} type="button" onClick={() => navigate('settings')}><Settings size={18} /><span>Settings</span></button>
+        <div className={`save-state ${saveState}`}><span /> {saveState === 'saving' ? 'Saving locally…' : saveState === 'error' ? 'Couldn’t save' : 'Saved on this PC'}</div>
+        <div className="version-mark">v0.2</div>
       </aside>
 
-      <main className="main-area">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Deme product roadmap</p>
-            <h1>{view === 'focus' ? 'What matters now' : view === 'board' ? 'Roadmap board' : view === 'releases' ? 'Releases' : 'Archive'}</h1>
-          </div>
+      <main className="main-area v2-main">
+        <header className="topbar v2-topbar">
+          <div className="topbar-title"><p className="eyebrow">{title.eyebrow}</p><h1>{title.title}</h1></div>
           <div className="topbar-actions">
-            <label className="search-box">
-              <Search size={17} />
-              <input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search roadmap" />
-              <kbd>Ctrl K</kbd>
-            </label>
-            <button className="primary-button" type="button" onClick={() => createCard(view === 'board' ? 'ideas' : 'planned')}>
-              <Plus size={18} /> Add item
-            </button>
+            <label className="search-box v2-search"><Search size={17} /><input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search roadmap" /><kbd>Ctrl F</kbd></label>
+            <button className="command-button" type="button" onClick={() => setCommandOpen(true)} title="Command palette"><Command size={17} /><kbd>Ctrl K</kbd></button>
+            <button className="primary-button" type="button" onClick={() => setQuickCaptureOpen(true)}><Plus size={18} /> Add item</button>
           </div>
         </header>
 
-        <section className={`content ${view === 'board' ? 'board-content' : ''}`}>
+        {showFilters && (
+          <FilterBar
+            filters={filters}
+            areas={data.settings.areas}
+            releases={data.releases}
+            labels={labels}
+            onChange={(patch) => setFilters((current) => ({ ...current, ...patch }))}
+            onClear={() => setFilters(EMPTY_FILTERS)}
+          />
+        )}
+
+        <section className={`content v2-content view-${view}`}>
           {!loaded ? (
             <LoadingState />
           ) : view === 'focus' ? (
-            <FocusView cards={activeCards} onSelect={setSelectedId} onAdd={() => createCard('planned')} />
+            <FocusView cards={visibleCards} allCards={data.cards} releases={data.releases} activity={data.activity} dueSoonDays={data.settings.dueSoonDays} onSelect={setSelectedId} onAdd={() => setQuickCaptureOpen(true)} onNavigate={navigate} />
           ) : view === 'board' ? (
-            <BoardView cards={activeCards} onSelect={setSelectedId} onMove={moveCard} onAdd={createCard} />
+            <BoardView cards={visibleCards} allCards={data.cards} releases={data.releases} compact={data.settings.compactCards} showShipped={data.settings.showShippedOnBoard} onSelect={setSelectedId} onMove={moveCard} onReorder={reorderCard} onAdd={(stage) => createItem(stage)} />
+          ) : view === 'timeline' ? (
+            <TimelineView cards={visibleCards} allCards={data.cards} releases={data.releases} onSelect={setSelectedId} />
           ) : view === 'releases' ? (
-            <ReleasesView cards={activeCards} onSelect={setSelectedId} />
+            <ReleasesView cards={activeCards.filter((card) => matchesSearch(card, data.releases, search))} releases={data.releases} onSelectCard={setSelectedId} onEditRelease={setReleaseEditorId} onCreateRelease={createRelease} />
+          ) : view === 'list' ? (
+            <ListView cards={visibleCards} releases={data.releases} onSelect={setSelectedId} />
+          ) : view === 'archive' ? (
+            <ArchiveView cards={archivedCards} allCards={data.cards} releases={data.releases} onSelect={setSelectedId} onRestore={restoreCard} />
           ) : (
-            <ArchiveView cards={archivedCards} onSelect={setSelectedId} />
+            <SettingsView settings={data.settings} dataPath={dataPath} onChange={changeSettings} onBackup={exportBackup} onRestore={importBackup} onRevealData={revealData} />
           )}
         </section>
       </main>
@@ -284,291 +440,40 @@ export default function App() {
       {selected && (
         <CardEditor
           card={selected}
+          cards={data.cards}
+          releases={data.releases}
+          areas={data.settings.areas}
           onClose={() => setSelectedId(null)}
           onChange={(patch) => updateCard(selected.id, patch)}
           onArchive={() => archiveCard(selected.id)}
           onRestore={() => restoreCard(selected.id)}
           onDelete={() => deleteCard(selected.id)}
+          onDuplicate={() => duplicateCard(selected.id)}
         />
       )}
 
-      {toast && <div className="toast"><Check size={16} /> {toast}</div>}
+      <QuickCapture open={quickCaptureOpen} areas={data.settings.areas} releases={data.releases} onClose={() => setQuickCaptureOpen(false)} onCreate={createQuick} />
+      <ReleaseEditor release={editedRelease} onClose={() => setReleaseEditorId(null)} onChange={(patch) => editedRelease && updateRelease(editedRelease.id, patch)} onDelete={() => editedRelease && deleteRelease(editedRelease.id)} />
+      <CommandPalette open={commandOpen} cards={data.cards} releases={data.releases} onClose={() => setCommandOpen(false)} onSelectCard={setSelectedId} onNavigate={navigate} onNewItem={() => setQuickCaptureOpen(true)} onNewRelease={createRelease} onBackup={exportBackup} />
+
+      {toast && <div className="toast v2-toast"><span className="toast-dot" /> {toast}</div>}
     </div>
   );
 }
 
-function NavButton({ active, icon, label, count, onClick }: { active: boolean; icon: React.ReactNode; label: string; count?: number; onClick: () => void }) {
+function NavButton({ active, icon, label, count, onClick }: { active: boolean; icon: ReactNode; label: string; count?: number; onClick: () => void }) {
+  return <button className={`nav-button ${active ? 'active' : ''}`} type="button" onClick={onClick}>{icon}<span>{label}</span>{typeof count === 'number' && count > 0 && <small>{count}</small>}</button>;
+}
+
+function DemeBrand() {
   return (
-    <button className={`nav-button ${active ? 'active' : ''}`} type="button" onClick={onClick}>
-      {icon}<span>{label}</span>{typeof count === 'number' && count > 0 && <small>{count}</small>}
-    </button>
+    <div className="deme-brand-v2">
+      <div className="deme-d-mark"><span>D</span><i /></div>
+      <div className="deme-brand-copy"><strong>Deme</strong><small>Roadmap</small></div>
+    </div>
   );
 }
 
 function LoadingState() {
-  return <div className="loading-state"><div className="loading-orb" /><p>Opening your roadmap…</p></div>;
-}
-
-function FocusView({ cards, onSelect, onAdd }: { cards: RoadmapCard[]; onSelect: (id: string) => void; onAdd: () => void }) {
-  const progress = cards.filter((card) => card.stage === 'progress');
-  const testing = cards.filter((card) => card.stage === 'testing');
-  const planned = cards.filter((card) => card.stage === 'planned').slice(0, 6);
-
-  if (!cards.length) {
-    return (
-      <div className="empty-welcome">
-        <div className="welcome-icon"><Sparkles size={26} /></div>
-        <p className="eyebrow">Nothing noisy here</p>
-        <h2>Your roadmap starts clean.</h2>
-        <p>Add the first thing Deme needs. Give it a stage, optional release, and checklist. That’s it.</p>
-        <button className="primary-button" type="button" onClick={onAdd}><Plus size={18} /> Add the first item</button>
-        <div className="starter-flow">
-          <span>Ideas</span><ArrowRight size={14} /><span>Planned</span><ArrowRight size={14} /><span>Building</span><ArrowRight size={14} /><span>Testing</span><ArrowRight size={14} /><span>Shipped</span>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="focus-layout">
-      <div className="focus-hero">
-        <div>
-          <p className="eyebrow">Right now</p>
-          <h2>{progress.length ? `${progress.length} thing${progress.length === 1 ? '' : 's'} actively being built` : 'Nothing is marked in progress'}</h2>
-          <p>{testing.length ? `${testing.length} more ${testing.length === 1 ? 'item is' : 'items are'} waiting in testing.` : 'Move a card to In progress when work starts.'}</p>
-        </div>
-        <div className="focus-number">{progress.length}</div>
-      </div>
-
-      <FocusSection title="In progress" subtitle="Keep this list deliberately small" cards={progress} empty="Nothing currently being built." onSelect={onSelect} />
-      <FocusSection title="Testing" subtitle="Ready for QA, poking and breaking" cards={testing} empty="Testing is clear." onSelect={onSelect} />
-      <FocusSection title="Up next" subtitle="The nearest planned work" cards={planned} empty="Nothing planned yet." onSelect={onSelect} compact />
-    </div>
-  );
-}
-
-function FocusSection({ title, subtitle, cards, empty, onSelect, compact = false }: { title: string; subtitle: string; cards: RoadmapCard[]; empty: string; onSelect: (id: string) => void; compact?: boolean }) {
-  return (
-    <section className="focus-section">
-      <div className="section-heading"><div><h3>{title}</h3><p>{subtitle}</p></div><span>{cards.length}</span></div>
-      {cards.length ? (
-        <div className={compact ? 'focus-list compact' : 'focus-list'}>{cards.map((card) => <RoadmapCardTile key={card.id} card={card} onClick={() => onSelect(card.id)} />)}</div>
-      ) : (
-        <div className="quiet-empty"><CircleDot size={17} /> {empty}</div>
-      )}
-    </section>
-  );
-}
-
-function BoardView({ cards, onSelect, onMove, onAdd }: { cards: RoadmapCard[]; onSelect: (id: string) => void; onMove: (id: string, stage: Stage) => void; onAdd: (stage: Stage) => void }) {
-  return (
-    <div className="board-scroller">
-      <div className="board-grid">
-        {STAGES.map((stage) => {
-          const stageCards = cards.filter((card) => card.stage === stage.id);
-          return (
-            <section
-              className="board-column"
-              key={stage.id}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault();
-                const id = event.dataTransfer.getData('text/deme-card');
-                if (id) onMove(id, stage.id);
-              }}
-            >
-              <div className="column-heading">
-                <div><h3>{stage.label}</h3><p>{stage.hint}</p></div>
-                <span>{stageCards.length}</span>
-              </div>
-              <div className="column-cards">
-                {stageCards.map((card) => (
-                  <RoadmapCardTile key={card.id} card={card} onClick={() => onSelect(card.id)} draggable />
-                ))}
-                {!stageCards.length && <div className="column-empty">Drop something here</div>}
-              </div>
-              <button className="column-add" type="button" onClick={() => onAdd(stage.id)}><Plus size={16} /> Add</button>
-            </section>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ReleasesView({ cards, onSelect }: { cards: RoadmapCard[]; onSelect: (id: string) => void }) {
-  const grouped = useMemo(() => {
-    const groups = new Map<string, RoadmapCard[]>();
-    cards.forEach((card) => {
-      const release = card.release.trim();
-      if (!release) return;
-      groups.set(release, [...(groups.get(release) ?? []), card]);
-    });
-    return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
-  }, [cards]);
-  const unassigned = cards.filter((card) => !card.release.trim() && card.stage !== 'shipped');
-
-  return (
-    <div className="release-layout">
-      {!grouped.length && !unassigned.length ? (
-        <div className="plain-empty"><PackageCheck size={24} /><h2>No releases yet</h2><p>Add a release name such as “1.5” to any roadmap item and it will gather here automatically.</p></div>
-      ) : (
-        <>
-          {grouped.map(([name, releaseCards]) => {
-            const shipped = releaseCards.filter((card) => card.stage === 'shipped').length;
-            return (
-              <section className="release-group" key={name}>
-                <div className="release-heading">
-                  <div><span className="release-pill">Release</span><h2>{name}</h2></div>
-                  <p>{shipped}/{releaseCards.length} shipped</p>
-                </div>
-                <div className="release-progress"><span style={{ width: `${releaseCards.length ? (shipped / releaseCards.length) * 100 : 0}%` }} /></div>
-                <div className="release-items">{releaseCards.map((card) => <ReleaseRow key={card.id} card={card} onClick={() => onSelect(card.id)} />)}</div>
-              </section>
-            );
-          })}
-          {unassigned.length > 0 && (
-            <section className="release-group muted-group">
-              <div className="release-heading"><div><span className="release-pill">Loose ends</span><h2>Not assigned to a release</h2></div><p>{unassigned.length} items</p></div>
-              <div className="release-items">{unassigned.map((card) => <ReleaseRow key={card.id} card={card} onClick={() => onSelect(card.id)} />)}</div>
-            </section>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-function ReleaseRow({ card, onClick }: { card: RoadmapCard; onClick: () => void }) {
-  return (
-    <button className="release-row" type="button" onClick={onClick}>
-      <span className={`stage-dot stage-${card.stage}`} />
-      <div><strong>{card.title}</strong><small>{card.area} · {STAGE_LABEL[card.stage]}</small></div>
-      {card.targetDate && <time><CalendarDays size={14} /> {formatDate(card.targetDate)}</time>}
-      <ArrowRight size={16} />
-    </button>
-  );
-}
-
-function ArchiveView({ cards, onSelect }: { cards: RoadmapCard[]; onSelect: (id: string) => void }) {
-  if (!cards.length) return <div className="plain-empty"><Archive size={24} /><h2>Archive is empty</h2><p>Old ideas can live here without cluttering the roadmap.</p></div>;
-  return <div className="archive-grid">{cards.map((card) => <RoadmapCardTile key={card.id} card={card} onClick={() => onSelect(card.id)} />)}</div>;
-}
-
-function RoadmapCardTile({ card, onClick, draggable = false }: { card: RoadmapCard; onClick: () => void; draggable?: boolean }) {
-  const progress = checklistProgress(card);
-  return (
-    <div
-      className={`roadmap-card priority-${card.priority}`}
-      role="button"
-      tabIndex={0}
-      draggable={draggable}
-      onDragStart={(event) => {
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('text/deme-card', card.id);
-      }}
-      onClick={onClick}
-      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onClick(); }}
-    >
-      <div className="card-drag-row">
-        <span className="area-pill">{card.area}</span>
-        {draggable && <GripVertical className="drag-handle" size={15} />}
-      </div>
-      <h4>{card.title}</h4>
-      {card.description && <p>{card.description}</p>}
-      <div className="card-meta">
-        {card.priority === 'high' && <span className="priority-label">High</span>}
-        {card.release && <span>{card.release}</span>}
-        {card.targetDate && <span><CalendarDays size={13} /> {formatDate(card.targetDate)}</span>}
-        {progress && <span><ListChecks size={13} /> {progress}</span>}
-      </div>
-    </div>
-  );
-}
-
-function CardEditor({ card, onClose, onChange, onArchive, onRestore, onDelete }: { card: RoadmapCard; onClose: () => void; onChange: (patch: Partial<RoadmapCard>) => void; onArchive: () => void; onRestore: () => void; onDelete: () => void }) {
-  const [newChecklist, setNewChecklist] = useState('');
-
-  function addChecklistItem() {
-    const text = newChecklist.trim();
-    if (!text) return;
-    const item: ChecklistItem = { id: uid(), text, done: false };
-    onChange({ checklist: [...card.checklist, item] });
-    setNewChecklist('');
-  }
-
-  return (
-    <div className="drawer-scrim" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
-      <aside className="card-drawer" aria-label="Edit roadmap item">
-        <div className="drawer-top">
-          <div><span className={`stage-dot stage-${card.stage}`} /> {card.archived ? 'Archived item' : STAGE_LABEL[card.stage]}</div>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Close"><X size={19} /></button>
-        </div>
-
-        <div className="drawer-scroll">
-          <input className="title-input" value={card.title} onChange={(event) => onChange({ title: event.target.value })} aria-label="Title" />
-          <textarea className="description-input" value={card.description} onChange={(event) => onChange({ description: event.target.value })} placeholder="Add a short description…" rows={4} />
-
-          <div className="editor-grid">
-            <EditorField label="Stage">
-              <select value={card.stage} onChange={(event) => onChange({ stage: event.target.value as Stage })}>
-                {STAGES.map((stage) => <option key={stage.id} value={stage.id}>{stage.label}</option>)}
-              </select>
-            </EditorField>
-            <EditorField label="Area">
-              <input list="deme-areas" value={card.area} onChange={(event) => onChange({ area: event.target.value })} />
-              <datalist id="deme-areas">{AREAS.map((area) => <option value={area} key={area} />)}</datalist>
-            </EditorField>
-            <EditorField label="Priority">
-              <select value={card.priority} onChange={(event) => onChange({ priority: event.target.value as Priority })}>
-                <option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option>
-              </select>
-            </EditorField>
-            <EditorField label="Target date">
-              <input type="date" value={card.targetDate} min="2020-01-01" onChange={(event) => onChange({ targetDate: event.target.value })} />
-            </EditorField>
-          </div>
-
-          <EditorField label="Release">
-            <input value={card.release} onChange={(event) => onChange({ release: event.target.value })} placeholder="e.g. 1.5" />
-          </EditorField>
-
-          <div className="checklist-block">
-            <div className="checklist-heading"><div><ClipboardCheck size={18} /><strong>Checklist</strong></div>{card.checklist.length > 0 && <span>{card.checklist.filter((item) => item.done).length}/{card.checklist.length}</span>}</div>
-            <div className="checklist-items">
-              {card.checklist.map((item) => (
-                <div className={`check-item ${item.done ? 'done' : ''}`} key={item.id}>
-                  <button type="button" className="check-toggle" onClick={() => onChange({ checklist: card.checklist.map((current) => current.id === item.id ? { ...current, done: !current.done } : current) })}>
-                    {item.done && <Check size={13} />}
-                  </button>
-                  <input value={item.text} onChange={(event) => onChange({ checklist: card.checklist.map((current) => current.id === item.id ? { ...current, text: event.target.value } : current) })} />
-                  <button className="remove-check" type="button" onClick={() => onChange({ checklist: card.checklist.filter((current) => current.id !== item.id) })}><X size={14} /></button>
-                </div>
-              ))}
-            </div>
-            <div className="new-check-item">
-              <Plus size={16} />
-              <input value={newChecklist} onChange={(event) => setNewChecklist(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') addChecklistItem(); }} placeholder="Add checklist item" />
-              {newChecklist.trim() && <button type="button" onClick={addChecklistItem}>Add</button>}
-            </div>
-          </div>
-        </div>
-
-        <div className="drawer-footer">
-          {card.archived ? (
-            <>
-              <button className="secondary-button" type="button" onClick={onRestore}><RotateCcw size={16} /> Restore</button>
-              <button className="danger-button" type="button" onClick={onDelete}><Trash2 size={16} /> Delete forever</button>
-            </>
-          ) : (
-            <button className="secondary-button" type="button" onClick={onArchive}><Archive size={16} /> Move to archive</button>
-          )}
-        </div>
-      </aside>
-    </div>
-  );
-}
-
-function EditorField({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="editor-field"><span>{label}</span>{children}</label>;
+  return <div className="loading-state v2-loading"><div className="loading-orb" /><p>Opening your roadmap…</p></div>;
 }

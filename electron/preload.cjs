@@ -6,4 +6,5 @@ contextBridge.exposeInMainWorld('demeRoadmap', {
   exportBackup: (data) => ipcRenderer.invoke('roadmap:export', data),
   importBackup: () => ipcRenderer.invoke('roadmap:import'),
   dataPath: () => ipcRenderer.invoke('roadmap:data-path'),
+  revealData: () => ipcRenderer.invoke('roadmap:reveal-data'),
 });
