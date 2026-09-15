@@ -1,4 +1,4 @@
-import rawCatalog from '../docs/qase/deme-qa-catalog.mjs?raw';
+import generatedCatalog from './qaCatalog.generated.json';
 
 export type QARisk = 'P0' | 'P1' | 'P2' | 'P3';
 
@@ -15,30 +15,24 @@ function isRisk(value: unknown): value is QARisk {
   return value === 'P0' || value === 'P1' || value === 'P2' || value === 'P3';
 }
 
-function recoverCatalogCases(source: string) {
-  const recovered: QACatalogCase[] = [];
-  const capture = (suite: unknown, title: unknown, risk: unknown, preconditions: unknown, steps: unknown, description: unknown = '') => {
-    if (typeof suite !== 'string' || typeof title !== 'string' || !isRisk(risk) || typeof preconditions !== 'string' || !Array.isArray(steps)) return;
-    const cleanSteps = steps.filter((step): step is [string, string] => Array.isArray(step) && step.length === 2 && typeof step[0] === 'string' && typeof step[1] === 'string');
-    if (cleanSteps.length !== steps.length || cleanSteps.length < 2) return;
-    recovered.push({ suite, title, risk, preconditions, steps: cleanSteps, description: typeof description === 'string' ? description : '' });
+function normaliseCase(value: unknown): QACatalogCase | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.suite !== 'string' || typeof raw.title !== 'string' || !isRisk(raw.risk) || typeof raw.preconditions !== 'string' || !Array.isArray(raw.steps)) return null;
+  const steps = raw.steps.filter((step): step is [string, string] => Array.isArray(step) && step.length === 2 && typeof step[0] === 'string' && typeof step[1] === 'string');
+  if (steps.length !== raw.steps.length || steps.length < 2) return null;
+  return {
+    suite: raw.suite,
+    title: raw.title,
+    risk: raw.risk,
+    preconditions: raw.preconditions,
+    steps,
+    description: typeof raw.description === 'string' ? raw.description : '',
   };
-
-  for (const sourceLine of source.split(/\r?\n/)) {
-    const line = sourceLine.trim();
-    if (!line.startsWith('C(') || !line.endsWith(');')) continue;
-    try {
-      const evaluateLine = new Function('C', `"use strict"; ${line}`) as (callback: typeof capture) => void;
-      evaluateLine(capture);
-    } catch {
-      // The checked-in authoring snapshot contains a truncation marker in one line.
-      // Ignore only that damaged line while retaining every complete Qase case around it.
-    }
-  }
-  return recovered;
 }
 
-export const QA_CASES = recoverCatalogCases(rawCatalog);
+const generated = generatedCatalog as unknown as { cases?: unknown[]; suites?: unknown[] };
+export const QA_CASES = (generated.cases ?? []).map(normaliseCase).filter((testCase): testCase is QACatalogCase => Boolean(testCase));
 export const QA_SUITES = Array.from(new Set(QA_CASES.map((testCase) => testCase.suite)));
 
 export function qaCaseKey(testCase: QACatalogCase) {
