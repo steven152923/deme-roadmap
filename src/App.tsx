@@ -5,7 +5,7 @@ import {
   Command,
   LayoutDashboard,
   List,
-  Map,
+  Map as MapIcon,
   PackageCheck,
   Plus,
   Search,
@@ -375,7 +375,7 @@ export default function App() {
         <nav className="nav-stack" aria-label="Roadmap views">
           <NavButton active={view === 'focus'} icon={<LayoutDashboard size={18} />} label="Focus" onClick={() => navigate('focus')} />
           <NavButton active={view === 'board'} icon={<Columns3 size={18} />} label="Board" count={totalOpen} onClick={() => navigate('board')} />
-          <NavButton active={view === 'timeline'} icon={<Map size={18} />} label="Roadmap" onClick={() => navigate('timeline')} />
+          <NavButton active={view === 'timeline'} icon={<MapIcon size={18} />} label="Roadmap" onClick={() => navigate('timeline')} />
           <NavButton active={view === 'releases'} icon={<PackageCheck size={18} />} label="Releases" count={data.releases.filter((release) => release.status !== 'released').length} onClick={() => navigate('releases')} />
           <NavButton active={view === 'list'} icon={<List size={18} />} label="All items" onClick={() => navigate('list')} />
           <NavButton active={view === 'archive'} icon={<Archive size={18} />} label="Archive" count={data.cards.filter((card) => card.archived).length} onClick={() => navigate('archive')} />
