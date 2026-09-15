@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Archive,
+  ClipboardCheck,
   Columns3,
   Command,
   Inbox,
@@ -16,6 +17,7 @@ import { CardEditor } from './components/CardEditor';
 import { FilterBar } from './components/FilterBar';
 import { IdeaInboxView } from './components/IdeaInbox';
 import { CommandPalette, QuickCapture, ReleaseEditor, type QuickCaptureValue } from './components/Overlays';
+import { QAWorkspace, type QABugInput } from './components/QAWorkspace';
 import { ReleaseBoard, UNASSIGNED } from './components/ReleaseBoard';
 import { SettingsPanel } from './components/SettingsPanel';
 import { TodayStrip } from './components/TodayStrip';
@@ -45,6 +47,20 @@ function applyFilters(card: RoadmapCard, filters: RoadmapFilters, data: RoadmapD
   if (filters.label && !card.labels.includes(filters.label)) return false;
   if (filters.today && !card.today) return false;
   return true;
+}
+
+function qaAreaForSuite(areas: string[], suite: string) {
+  const [root, detail = ''] = suite.split('/');
+  let preferred = 'Core';
+  if (root === 'Discovery & Home') preferred = 'Home';
+  else if (root === 'Communities') preferred = 'Communities';
+  else if (root === 'Profiles & Social') preferred = 'Profiles';
+  else if (root === 'Messaging') preferred = 'Chats';
+  else if (root === 'Safety & Moderation') preferred = 'Safety';
+  else if (root === 'Premium') preferred = 'Premium';
+  else if (root === 'Content' && /journal|blog/i.test(detail)) preferred = 'Journals';
+  else if (root === 'Cross-Cutting' && /performance/i.test(detail)) preferred = 'Performance';
+  return areas.find((area) => area.toLowerCase() === preferred.toLowerCase()) ?? areas[0] ?? 'Core';
 }
 
 export default function App() {
@@ -140,6 +156,58 @@ export default function App() {
     });
     setQuickCaptureOpen(false); setToast('Added to the release flow ♡');
     if (value.stage === 'progress' || value.stage === 'testing' || value.stage === 'ideas') setSelectedId(id);
+  }
+
+  function createBugFromQa(input: QABugInput) {
+    const cardId = uid('card');
+    const platformLabel = input.platform === 'ios' ? 'iOS' : 'Android';
+    setData((current) => {
+      const now = new Date().toISOString();
+      const releaseId = current.releases.some((release) => release.id === input.run.releaseId)
+        ? input.run.releaseId
+        : current.releases.find((release) => release.status === 'active')?.id ?? '';
+      const area = qaAreaForSuite(current.settings.areas, input.testCase.suite);
+      const base = newCard('ideas', area, maxOrder(current.cards, 'ideas'), 'bug');
+      const priority = input.testCase.risk === 'P0' ? 'critical' : input.testCase.risk === 'P1' ? 'high' : 'normal';
+      const bugSeverity = input.testCase.risk === 'P0' ? 'blocker' : input.testCase.risk === 'P1' ? 'high' : input.testCase.risk === 'P2' ? 'medium' : 'low';
+      const deviceContext = [input.run.device, input.run.osVersion, input.run.build && `Deme ${input.run.build}`, input.run.tester && `Tester: ${input.run.tester}`].filter(Boolean).join(' · ');
+      const steps = input.testCase.steps.map(([action, expected], index) => `${index + 1}. ${action}\n   Expected: ${expected}`).join('\n');
+      const description = [
+        `QA failure from ${input.run.title}`,
+        `Suite: ${input.testCase.suite}`,
+        `Risk: ${input.testCase.risk}`,
+        deviceContext ? `Test context: ${deviceContext}` : '',
+        '',
+        'Preconditions',
+        input.testCase.preconditions,
+        '',
+        'Actual result',
+        input.result.actualResult.trim() || 'No actual result was recorded yet.',
+        '',
+        'Tester notes / evidence',
+        input.result.notes.trim() || 'No additional notes were recorded.',
+        '',
+        'Reproduction steps and expected results',
+        steps,
+      ].filter((line, index, lines) => line !== '' || (index > 0 && lines[index - 1] !== '')).join('\n');
+      const rootLabel = input.testCase.suite.split('/')[0].toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const card: RoadmapCard = {
+        ...base,
+        id: cardId,
+        title: `[${platformLabel} QA] ${input.testCase.title}`,
+        description,
+        priority,
+        bugSeverity,
+        releaseId,
+        labels: ['qa', input.platform, input.testCase.risk.toLowerCase(), rootLabel].filter(Boolean),
+        createdAt: now,
+        updatedAt: now,
+      };
+      return { ...current, cards: [...current.cards, card], activity: appendActivity(current.activity, activity('created', `Created QA bug “${card.title}”`, card.id)) };
+    });
+    setSelectedId(cardId);
+    setToast('QA failure added to Bugs ✦');
+    return cardId;
   }
 
   function addInboxThought(text: string) {
@@ -255,6 +323,7 @@ export default function App() {
           <NavButton active={effectiveView === 'focus'} icon={<LayoutDashboard size={18} />} label="Focus" onClick={() => navigate('focus')} />
           <NavButton active={effectiveView === 'inbox'} icon={<Inbox size={18} />} label="Idea inbox" count={data.inbox.length} onClick={() => navigate('inbox')} />
           <NavButton active={effectiveView === 'board'} icon={<Columns3 size={18} />} label="Release board" count={totalOpen} onClick={() => navigate('board')} />
+          <NavButton active={effectiveView === 'qa'} icon={<ClipboardCheck size={18} />} label="QA test runs" onClick={() => navigate('qa')} />
           <NavButton active={effectiveView === 'timeline'} icon={<MapIcon size={18} />} label="Roadmap" onClick={() => navigate('timeline')} />
           <NavButton active={effectiveView === 'list'} icon={<List size={18} />} label="All items" onClick={() => navigate('list')} />
           <NavButton active={effectiveView === 'archive'} icon={<Archive size={18} />} label="Archive" count={data.cards.filter((card) => card.archived).length} onClick={() => navigate('archive')} />
@@ -266,10 +335,10 @@ export default function App() {
       </aside>
 
       <main className="main-area v2-main v3-main">
-        <header className="topbar v2-topbar v3-topbar"><div className="header-cloud header-cloud-left" /><div className="header-cloud header-cloud-right" /><span className="header-sparkle hs-one">✦</span><span className="header-sparkle hs-two">✧</span><div className="topbar-title"><p className="eyebrow">{title.eyebrow}</p><h1>{title.title}</h1></div><div className="topbar-actions"><label className="search-box v2-search"><Search size={17} /><input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Find something…" /><kbd>Ctrl F</kbd></label><button className="command-button" type="button" onClick={() => setCommandOpen(true)} title="Command palette"><Command size={17} /><kbd>Ctrl K</kbd></button><button className="primary-button cute-primary" type="button" onClick={() => setQuickCaptureOpen(true)}><Plus size={18} /> Add work</button></div></header>
+        <header className="topbar v2-topbar v3-topbar"><div className="header-cloud header-cloud-left" /><div className="header-cloud header-cloud-right" /><span className="header-sparkle hs-one">✦</span><span className="header-sparkle hs-two">✧</span><div className="topbar-title"><p className="eyebrow">{title.eyebrow}</p><h1>{title.title}</h1></div><div className="topbar-actions"><label className="search-box v2-search"><Search size={17} /><input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder={effectiveView === 'qa' ? 'Find a test…' : 'Find something…'} /><kbd>Ctrl F</kbd></label><button className="command-button" type="button" onClick={() => setCommandOpen(true)} title="Command palette"><Command size={17} /><kbd>Ctrl K</kbd></button><button className="primary-button cute-primary" type="button" onClick={() => setQuickCaptureOpen(true)}><Plus size={18} /> Add work</button></div></header>
         {showFilters && <FilterBar filters={filters} areas={data.settings.areas} releases={data.releases} labels={labels} onChange={(patch) => setFilters((current) => ({ ...current, ...patch }))} onClear={() => setFilters(EMPTY_FILTERS)} />}
         <section className={`content v2-content v3-content v4-content view-${effectiveView}`}>
-          {!loaded ? <LoadingState /> : effectiveView === 'focus' ? <><TodayStrip cards={activeCards} releases={data.releases} onSelect={setSelectedId} onOpenBoard={() => navigate('board')} /><FocusView cards={visibleCards} allCards={data.cards} releases={data.releases} activity={data.activity} dueSoonDays={data.settings.dueSoonDays} onSelect={setSelectedId} onAdd={() => setQuickCaptureOpen(true)} onNavigate={navigate} /></> : effectiveView === 'inbox' ? <IdeaInboxView notes={data.inbox} onAdd={addInboxThought} onPromote={promoteInboxThought} onDelete={deleteInboxThought} /> : effectiveView === 'board' ? <ReleaseBoard cards={boardCards} allCards={data.cards} releases={data.releases} selectedReleaseId={boardReleaseId} compact={data.settings.compactCards} showCompleted={data.settings.showShippedOnBoard} onSelectRelease={setBoardReleaseId} onSelectCard={setSelectedId} onMove={moveCard} onReorder={reorderCard} onAdd={(stage, patch) => createItem(stage, true, patch)} onCreateRelease={createRelease} onEditRelease={setReleaseEditorId} onSetActiveRelease={setActiveRelease} /> : effectiveView === 'timeline' ? <TimelineView cards={visibleCards} allCards={data.cards} releases={data.releases} onSelect={setSelectedId} /> : effectiveView === 'list' ? <ListView cards={visibleCards} releases={data.releases} onSelect={setSelectedId} /> : effectiveView === 'archive' ? <ArchiveView cards={archivedCards} allCards={data.cards} releases={data.releases} onSelect={setSelectedId} onRestore={restoreCard} /> : <SettingsPanel settings={data.settings} dataPath={dataPath} onChange={changeSettings} onBackup={exportBackup} onRestore={importBackup} onRevealData={revealData} />}
+          {!loaded ? <LoadingState /> : effectiveView === 'focus' ? <><TodayStrip cards={activeCards} releases={data.releases} onSelect={setSelectedId} onOpenBoard={() => navigate('board')} /><FocusView cards={visibleCards} allCards={data.cards} releases={data.releases} activity={data.activity} dueSoonDays={data.settings.dueSoonDays} onSelect={setSelectedId} onAdd={() => setQuickCaptureOpen(true)} onNavigate={navigate} /></> : effectiveView === 'inbox' ? <IdeaInboxView notes={data.inbox} onAdd={addInboxThought} onPromote={promoteInboxThought} onDelete={deleteInboxThought} /> : effectiveView === 'board' ? <ReleaseBoard cards={boardCards} allCards={data.cards} releases={data.releases} selectedReleaseId={boardReleaseId} compact={data.settings.compactCards} showCompleted={data.settings.showShippedOnBoard} onSelectRelease={setBoardReleaseId} onSelectCard={setSelectedId} onMove={moveCard} onReorder={reorderCard} onAdd={(stage, patch) => createItem(stage, true, patch)} onCreateRelease={createRelease} onEditRelease={setReleaseEditorId} onSetActiveRelease={setActiveRelease} /> : effectiveView === 'qa' ? <QAWorkspace releases={data.releases} cards={data.cards} search={search} onCreateBug={createBugFromQa} onOpenCard={setSelectedId} /> : effectiveView === 'timeline' ? <TimelineView cards={visibleCards} allCards={data.cards} releases={data.releases} onSelect={setSelectedId} /> : effectiveView === 'list' ? <ListView cards={visibleCards} releases={data.releases} onSelect={setSelectedId} /> : effectiveView === 'archive' ? <ArchiveView cards={archivedCards} allCards={data.cards} releases={data.releases} onSelect={setSelectedId} onRestore={restoreCard} /> : <SettingsPanel settings={data.settings} dataPath={dataPath} onChange={changeSettings} onBackup={exportBackup} onRestore={importBackup} onRevealData={revealData} />}
         </section>
       </main>
 
