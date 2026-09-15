@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import App from './App';
+import { OpsSearchBridge } from './components/OpsSearchBridge';
 import { OpsShell } from './components/OpsShell';
 
 export default function AppV6() {
@@ -41,7 +42,7 @@ export default function AppV6() {
   return (
     <>
       <App />
-      {unlocked && <OpsShell />}
+      {unlocked && <><OpsShell /><OpsSearchBridge /></>}
     </>
   );
 }
