@@ -1,5 +1,6 @@
 import { Download, FolderOpen, LockKeyhole, Palette, Plus, ShieldCheck, Trash2, Upload } from 'lucide-react';
 import { useState } from 'react';
+import { APP_VERSION } from '../appVersion';
 import type { RoadmapSettings, SecurityActionResult, ThemePreset } from '../types';
 
 const THEMES: { id: ThemePreset; name: string; description: string }[] = [
@@ -77,7 +78,7 @@ export function SettingsPanel({ settings, dataPath, autoLockMinutes, onChange, o
         <div className="settings-data-actions"><button type="button" onClick={onBackup}><Download size={16} /> Back up workspace</button><button type="button" onClick={onRestore}><Upload size={16} /> Restore backup</button></div>
       </section>
 
-      <section className="about-card"><div className="about-mark"><span>D</span><i /></div><div><span>Deme Roadmap</span><strong>Version 0.5.0</strong><small>Private workspace · three styles · calendar · notes · decisions · launch center</small></div><Palette size={18} /></section>
+      <section className="about-card"><div className="about-mark"><span>D</span><i /></div><div><span>Deme Roadmap</span><strong>Version {APP_VERSION}</strong><small>Private workspace · three styles · calendar · notes · decisions · launch center</small></div><Palette size={18} /></section>
     </div>
   );
 }
