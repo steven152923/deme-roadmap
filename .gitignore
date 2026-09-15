@@ -1,6 +1,7 @@
 node_modules/
 dist/
 release/
+src/qaCatalog.generated.json
 *.log
 .DS_Store
 Thumbs.db
