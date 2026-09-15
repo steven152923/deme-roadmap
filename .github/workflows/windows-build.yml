@@ -1,0 +1,28 @@
+name: Build Windows app
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - build/desktop-roadmap-v1
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm install
+      - name: Typecheck and build installer
+        run: npm run dist:win
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Deme-Roadmap-Windows
+          path: release/*.exe
+          if-no-files-found: error
