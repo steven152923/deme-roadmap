@@ -1,10 +1,10 @@
 {
   "name": "deme-roadmap",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "type": "module",
   "author": "Deme App LTD",
-  "description": "A private, connected local-first Windows roadmap, QA, launch and Wi-Fi companion workspace for Deme.",
+  "description": "Deme Ops is the private local-first operating workspace for product delivery, QA, signals, systems and future Deme operations.",
   "main": "electron/main.cjs",
   "scripts": {
     "prepare:qa": "node scripts/generate-qa-catalog.mjs",
@@ -35,8 +35,8 @@
   },
   "build": {
     "appId": "com.demeapp.roadmap",
-    "productName": "Deme Roadmap",
-    "artifactName": "Deme-Roadmap-Setup-${version}.${ext}",
+    "productName": "Deme Ops",
+    "artifactName": "Deme-Ops-Setup-${version}.${ext}",
     "files": [
       "dist/**/*",
       "electron/**/*",
@@ -56,7 +56,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Deme Roadmap"
+      "shortcutName": "Deme Ops"
     }
   }
 }
