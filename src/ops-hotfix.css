@@ -1,0 +1,18 @@
+/* Deme Ops 0.6.1 hotfix
+   The legacy App shell is still mounted underneath Ops so Work and Settings can reuse
+   the existing functional screens. Ops hides the old sidebar. When the shell remained
+   a two-column grid (0 + 1fr), removing that sidebar caused .main-area to auto-place
+   into the zero-width first column. Keep the shell single-flow instead. */
+.app-shell {
+  display: block !important;
+  grid-template-columns: none !important;
+}
+
+.main-area {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+html[data-ops-context="work"] .main-area {
+  width: 100% !important;
+}
