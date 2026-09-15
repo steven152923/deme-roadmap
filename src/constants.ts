@@ -28,11 +28,12 @@ export const EFFORTS: { id: Effort; label: string }[] = [
 ];
 
 export const VIEW_TITLES: Record<ViewId, { eyebrow: string; title: string }> = {
-  focus: { eyebrow: 'Deme product roadmap', title: 'What matters now' },
-  board: { eyebrow: 'Everything in motion', title: 'Board' },
-  timeline: { eyebrow: 'The next few months', title: 'Roadmap' },
-  releases: { eyebrow: 'Version planning', title: 'Releases' },
-  list: { eyebrow: 'Scan everything quickly', title: 'All items' },
-  archive: { eyebrow: 'Out of the way, not gone', title: 'Archive' },
-  settings: { eyebrow: 'Keep it yours', title: 'Settings' },
+  focus: { eyebrow: 'your little Deme control room', title: 'What matters now' },
+  inbox: { eyebrow: 'thoughts before they become tasks', title: 'Idea inbox' },
+  board: { eyebrow: 'everything finding its place', title: 'Board' },
+  timeline: { eyebrow: 'the next few months', title: 'Roadmap' },
+  releases: { eyebrow: 'versions we are growing toward', title: 'Releases' },
+  list: { eyebrow: 'everything, without the clutter', title: 'All items' },
+  archive: { eyebrow: 'sleeping ideas live here', title: 'Archive' },
+  settings: { eyebrow: 'make the space yours', title: 'Settings' },
 };
