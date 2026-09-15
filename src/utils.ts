@@ -18,8 +18,7 @@ export function formatLongDate(value: string) {
 export function formatActivityDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  const now = Date.now();
-  const diff = Math.max(0, now - date.getTime());
+  const diff = Math.max(0, Date.now() - date.getTime());
   const minutes = Math.floor(diff / 60_000);
   if (minutes < 1) return 'just now';
   if (minutes < 60) return `${minutes}m ago`;
@@ -30,10 +29,7 @@ export function formatActivityDate(value: string) {
   return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(date);
 }
 
-export function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
+export function todayIso() { return new Date().toISOString().slice(0, 10); }
 export function addDaysIso(days: number) {
   const date = new Date();
   date.setHours(12, 0, 0, 0);
@@ -46,12 +42,7 @@ export function isOverdue(card: RoadmapCard) {
 }
 
 export function isDueSoon(card: RoadmapCard, days: number) {
-  return Boolean(
-    card.targetDate &&
-      card.stage !== 'shipped' &&
-      card.targetDate >= todayIso() &&
-      card.targetDate <= addDaysIso(days),
-  );
+  return Boolean(card.targetDate && card.stage !== 'shipped' && card.targetDate >= todayIso() && card.targetDate <= addDaysIso(days));
 }
 
 export function releaseFor(card: RoadmapCard, releases: RoadmapRelease[]) {
@@ -60,10 +51,7 @@ export function releaseFor(card: RoadmapCard, releases: RoadmapRelease[]) {
 
 export function checklistRatio(card: RoadmapCard) {
   if (!card.checklist.length) return null;
-  return {
-    done: card.checklist.filter((item) => item.done).length,
-    total: card.checklist.length,
-  };
+  return { done: card.checklist.filter((item) => item.done).length, total: card.checklist.length };
 }
 
 export function completionPercent(cards: RoadmapCard[]) {
@@ -82,13 +70,14 @@ export function matchesSearch(card: RoadmapCard, releases: RoadmapRelease[], que
     STAGE_LABEL[card.stage],
     card.priority,
     card.effort,
+    card.kind,
+    card.kind === 'bug' ? card.bugSeverity : '',
+    card.today ? 'today' : '',
     release?.name ?? '',
     ...card.labels,
     ...card.links.flatMap((link) => [link.label, link.url]),
     ...card.updates.map((update) => update.text),
-  ]
-    .join(' ')
-    .toLowerCase();
+  ].join(' ').toLowerCase();
   return haystack.includes(clean);
 }
 
@@ -115,6 +104,7 @@ export function nextMonths(count = 6) {
 
 export function sortByOrder(cards: RoadmapCard[]) {
   return [...cards].sort((a, b) => {
+    if (a.today !== b.today) return a.today ? -1 : 1;
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
     if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
     return b.updatedAt.localeCompare(a.updatedAt);

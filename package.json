@@ -1,10 +1,10 @@
 {
   "name": "deme-roadmap",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "author": "Deme App LTD",
-  "description": "A cute, local-first Windows roadmap, idea inbox and release planning app for Deme.",
+  "description": "A cute, local-first Windows release board, roadmap and idea inbox for Deme.",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
@@ -33,18 +33,9 @@
     "appId": "com.demeapp.roadmap",
     "productName": "Deme Roadmap",
     "artifactName": "Deme-Roadmap-Setup-${version}.${ext}",
-    "files": [
-      "dist/**/*",
-      "electron/**/*",
-      "package.json"
-    ],
-    "directories": {
-      "output": "release"
-    },
-    "win": {
-      "target": ["nsis"],
-      "icon": "build/icon.svg"
-    },
+    "files": ["dist/**/*", "electron/**/*", "package.json"],
+    "directories": { "output": "release" },
+    "win": { "target": ["nsis"], "icon": "build/icon.svg" },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
