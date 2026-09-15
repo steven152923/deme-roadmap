@@ -1,17 +1,15 @@
 const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
+const crypto = require('node:crypto');
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 let mainWindow = null;
+let sessionUnlocked = false;
 
-function roadmapPath() {
-  return path.join(app.getPath('userData'), 'roadmap.json');
-}
-
-function startupLogPath() {
-  return path.join(app.getPath('userData'), 'startup.log');
-}
+function roadmapPath() { return path.join(app.getPath('userData'), 'roadmap.json'); }
+function securityPath() { return path.join(app.getPath('userData'), 'security.json'); }
+function startupLogPath() { return path.join(app.getPath('userData'), 'startup.log'); }
 
 async function logStartup(message) {
   try {
@@ -19,6 +17,68 @@ async function logStartup(message) {
     await fs.appendFile(startupLogPath(), `[${new Date().toISOString()}] ${message}\n`, 'utf8');
   } catch {
     // Logging must never become another startup failure.
+  }
+}
+
+function defaultSecurity() {
+  return { version: 1, configured: false, algorithm: 'scrypt-v1', salt: '', hash: '', autoLockMinutes: 15, corrupt: false };
+}
+
+async function readSecurity() {
+  try {
+    const parsed = JSON.parse(await fs.readFile(securityPath(), 'utf8'));
+    if (!parsed || typeof parsed !== 'object') throw new Error('Invalid security file.');
+    const configured = parsed.configured === true;
+    if (configured && (typeof parsed.salt !== 'string' || typeof parsed.hash !== 'string' || !parsed.salt || !parsed.hash)) throw new Error('Security verifier is incomplete.');
+    const autoLockMinutes = [0, 5, 15, 30, 60].includes(Number(parsed.autoLockMinutes)) ? Number(parsed.autoLockMinutes) : 15;
+    return { version: 1, configured, algorithm: 'scrypt-v1', salt: parsed.salt || '', hash: parsed.hash || '', autoLockMinutes, corrupt: false };
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return defaultSecurity();
+    await logStartup(`Security file error: ${error.message || String(error)}`);
+    return { ...defaultSecurity(), configured: true, corrupt: true };
+  }
+}
+
+async function writeSecurity(config) {
+  const target = securityPath();
+  const temp = `${target}.tmp`;
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  const persisted = {
+    version: 1,
+    configured: Boolean(config.configured),
+    algorithm: 'scrypt-v1',
+    salt: config.salt || '',
+    hash: config.hash || '',
+    autoLockMinutes: [0, 5, 15, 30, 60].includes(Number(config.autoLockMinutes)) ? Number(config.autoLockMinutes) : 15,
+  };
+  await fs.writeFile(temp, JSON.stringify(persisted, null, 2), 'utf8');
+  await fs.rename(temp, target);
+  return persisted;
+}
+
+function validPasscode(passcode) { return typeof passcode === 'string' && /^\d{4,12}$/.test(passcode); }
+function derivePasscode(passcode, salt) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(passcode, salt, 64, (error, key) => error ? reject(error) : resolve(key));
+  });
+}
+
+async function verifyPasscode(passcode, config) {
+  if (!validPasscode(passcode) || !config.configured || config.corrupt) return false;
+  try {
+    const expected = Buffer.from(config.hash, 'hex');
+    const actual = await derivePasscode(passcode, Buffer.from(config.salt, 'hex'));
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  } catch {
+    return false;
+  }
+}
+
+function requireUnlocked() {
+  if (!sessionUnlocked) {
+    const error = new Error('Deme Roadmap is locked.');
+    error.code = 'ROADMAP_LOCKED';
+    throw error;
   }
 }
 
@@ -35,18 +95,12 @@ async function readRoadmap(fallback) {
   try {
     const raw = await fs.readFile(roadmapPath(), 'utf8');
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.cards)) {
-      throw new Error('Roadmap file has an invalid shape.');
-    }
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.cards)) throw new Error('Roadmap file has an invalid shape.');
     return parsed;
   } catch (error) {
     if (error && error.code !== 'ENOENT') {
       const brokenPath = `${roadmapPath()}.broken-${Date.now()}`;
-      try {
-        await fs.copyFile(roadmapPath(), brokenPath);
-      } catch {
-        // Startup should remain resilient even if the recovery copy cannot be written.
-      }
+      try { await fs.copyFile(roadmapPath(), brokenPath); } catch { /* best effort */ }
       await logStartup(`Recovered an unreadable roadmap file: ${error.message || String(error)}`);
     }
     await writeRoadmap(fallback);
@@ -72,22 +126,30 @@ async function reportRendererFailure(title, detail) {
   }).catch(() => undefined);
 }
 
+const WINDOW_THEMES = {
+  candy: { background: '#f8edf7', overlay: '#f8edf7', symbols: '#7f6887' },
+  night: { background: '#171322', overlay: '#171322', symbols: '#d7c9e9' },
+  paper: { background: '#f4eadb', overlay: '#f4eadb', symbols: '#715f58' },
+};
+function applyWindowTheme(theme) {
+  const choice = WINDOW_THEMES[theme] || WINDOW_THEMES.candy;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.setBackgroundColor(choice.background);
+  if (typeof mainWindow.setTitleBarOverlay === 'function') mainWindow.setTitleBarOverlay({ color: choice.overlay, symbolColor: choice.symbols, height: 44 });
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1500,
     height: 930,
     minWidth: 1120,
     minHeight: 700,
-    backgroundColor: '#f8edf7',
+    backgroundColor: WINDOW_THEMES.candy.background,
     title: 'Deme Roadmap',
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: '#f8edf7',
-      symbolColor: '#7f6887',
-      height: 44,
-    },
+    titleBarOverlay: { color: WINDOW_THEMES.candy.overlay, symbolColor: WINDOW_THEMES.candy.symbols, height: 44 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -97,14 +159,9 @@ function createWindow() {
   });
 
   let startupSettled = false;
-  const reveal = () => {
-    startupSettled = true;
-    showWindow();
-  };
-
+  const reveal = () => { startupSettled = true; showWindow(); };
   mainWindow.once('ready-to-show', reveal);
   mainWindow.webContents.once('did-finish-load', reveal);
-
   const visibilityFallback = setTimeout(() => {
     if (!startupSettled) {
       logStartup('Renderer did not emit ready-to-show within 4 seconds; forcing the window visible.');
@@ -117,83 +174,94 @@ function createWindow() {
     if (!isMainFrame) return;
     reportRendererFailure('The Roadmap page failed to load.', `${errorCode}: ${errorDescription}${validatedURL ? `\n${validatedURL}` : ''}`);
   });
-
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
     reportRendererFailure('The Roadmap renderer stopped unexpectedly.', `${details.reason}${typeof details.exitCode === 'number' ? ` (exit ${details.exitCode})` : ''}`);
   });
-
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('https://') || url.startsWith('http://')) {
-      shell.openExternal(url);
-    }
+    if (url.startsWith('https://') || url.startsWith('http://')) shell.openExternal(url);
     return { action: 'deny' };
   });
-
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (!isDev && url !== mainWindow.webContents.getURL()) event.preventDefault();
   });
 
-  const loadPromise = isDev
-    ? mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
-    : mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
-
-  loadPromise.catch((error) => {
-    reportRendererFailure('Deme Roadmap could not load its interface.', error.message || String(error));
-  });
+  const loadPromise = isDev ? mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL) : mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  loadPromise.catch((error) => reportRendererFailure('Deme Roadmap could not load its interface.', error.message || String(error)));
 }
 
-ipcMain.handle('roadmap:load', async (_event, fallback) => readRoadmap(fallback));
-ipcMain.handle('roadmap:save', async (_event, data) => {
-  await writeRoadmap(data);
+ipcMain.handle('security:status', async () => {
+  const config = await readSecurity();
+  return { configured: config.configured, unlocked: config.configured ? sessionUnlocked : false, autoLockMinutes: config.autoLockMinutes };
+});
+ipcMain.handle('security:setup', async (_event, passcode) => {
+  const current = await readSecurity();
+  if (current.configured) return { ok: false, error: current.corrupt ? 'The local security file is damaged. Delete security.json from the Deme Roadmap app-data folder to reset the lock.' : 'A passcode is already configured.' };
+  if (!validPasscode(passcode)) return { ok: false, error: 'Use a 4–12 digit passcode.' };
+  const salt = crypto.randomBytes(16);
+  const hash = await derivePasscode(passcode, salt);
+  await writeSecurity({ version: 1, configured: true, salt: salt.toString('hex'), hash: hash.toString('hex'), autoLockMinutes: 15 });
+  sessionUnlocked = true;
+  await logStartup('Roadmap passcode configured.');
   return { ok: true };
 });
+ipcMain.handle('security:verify', async (_event, passcode) => {
+  const config = await readSecurity();
+  if (config.corrupt) return { ok: false, error: 'The local security file is damaged. Check startup.log for details.' };
+  if (!config.configured) return { ok: false, error: 'No passcode has been configured yet.' };
+  const ok = await verifyPasscode(passcode, config);
+  sessionUnlocked = ok;
+  return ok ? { ok: true } : { ok: false, error: 'That passcode is not correct.' };
+});
+ipcMain.handle('security:lock', async () => { sessionUnlocked = false; return { ok: true }; });
+ipcMain.handle('security:change', async (_event, currentPasscode, nextPasscode) => {
+  requireUnlocked();
+  const config = await readSecurity();
+  if (!await verifyPasscode(currentPasscode, config)) return { ok: false, error: 'Current passcode is not correct.' };
+  if (!validPasscode(nextPasscode)) return { ok: false, error: 'New passcode must be 4–12 digits.' };
+  const salt = crypto.randomBytes(16);
+  const hash = await derivePasscode(nextPasscode, salt);
+  await writeSecurity({ ...config, salt: salt.toString('hex'), hash: hash.toString('hex') });
+  return { ok: true };
+});
+ipcMain.handle('security:auto-lock', async (_event, minutes) => {
+  requireUnlocked();
+  const value = Number(minutes);
+  if (![0, 5, 15, 30, 60].includes(value)) return { ok: false, error: 'Unsupported auto-lock interval.' };
+  const config = await readSecurity();
+  if (config.corrupt) return { ok: false, error: 'Security settings are unavailable.' };
+  await writeSecurity({ ...config, autoLockMinutes: value });
+  return { ok: true };
+});
+ipcMain.handle('window:set-theme', (_event, theme) => { applyWindowTheme(theme); return { ok: true }; });
+
+ipcMain.handle('roadmap:load', async (_event, fallback) => { requireUnlocked(); return readRoadmap(fallback); });
+ipcMain.handle('roadmap:save', async (_event, data) => { requireUnlocked(); await writeRoadmap(data); return { ok: true }; });
 ipcMain.handle('roadmap:export', async (_event, data) => {
-  const result = await dialog.showSaveDialog(mainWindow, {
-    title: 'Back up Deme Roadmap',
-    defaultPath: `deme-roadmap-backup-${new Date().toISOString().slice(0, 10)}.json`,
-    filters: [{ name: 'JSON', extensions: ['json'] }],
-  });
+  requireUnlocked();
+  const result = await dialog.showSaveDialog(mainWindow, { title: 'Back up Deme Roadmap', defaultPath: `deme-roadmap-backup-${new Date().toISOString().slice(0, 10)}.json`, filters: [{ name: 'JSON', extensions: ['json'] }] });
   if (result.canceled || !result.filePath) return { canceled: true };
   await fs.writeFile(result.filePath, JSON.stringify(data, null, 2), 'utf8');
   return { canceled: false, filePath: result.filePath };
 });
 ipcMain.handle('roadmap:import', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    title: 'Restore Deme Roadmap backup',
-    properties: ['openFile'],
-    filters: [{ name: 'JSON', extensions: ['json'] }],
-  });
+  requireUnlocked();
+  const result = await dialog.showOpenDialog(mainWindow, { title: 'Restore Deme Roadmap backup', properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] });
   if (result.canceled || !result.filePaths[0]) return { canceled: true };
-  const raw = await fs.readFile(result.filePaths[0], 'utf8');
-  const parsed = JSON.parse(raw);
-  if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.cards)) {
-    throw new Error('That file is not a Deme Roadmap backup.');
-  }
+  const parsed = JSON.parse(await fs.readFile(result.filePaths[0], 'utf8'));
+  if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.cards)) throw new Error('That file is not a Deme Roadmap backup.');
   await writeRoadmap(parsed);
   return { canceled: false, data: parsed };
 });
-ipcMain.handle('roadmap:data-path', () => roadmapPath());
-ipcMain.handle('roadmap:reveal-data', () => {
-  shell.showItemInFolder(roadmapPath());
-  return { ok: true };
-});
+ipcMain.handle('roadmap:data-path', () => { requireUnlocked(); return roadmapPath(); });
+ipcMain.handle('roadmap:reveal-data', () => { requireUnlocked(); shell.showItemInFolder(roadmapPath()); return { ok: true }; });
 
-process.on('uncaughtException', (error) => {
-  logStartup(`Main-process uncaught exception: ${error.stack || error.message || String(error)}`);
-});
-process.on('unhandledRejection', (reason) => {
-  logStartup(`Main-process unhandled rejection: ${reason instanceof Error ? reason.stack || reason.message : String(reason)}`);
-});
+process.on('uncaughtException', (error) => logStartup(`Main-process uncaught exception: ${error.stack || error.message || String(error)}`));
+process.on('unhandledRejection', (reason) => logStartup(`Main-process unhandled rejection: ${reason instanceof Error ? reason.stack || reason.message : String(reason)}`));
 
 app.whenReady().then(() => {
   app.setAppUserModelId('com.demeapp.roadmap');
   logStartup(`Starting Deme Roadmap ${app.getVersion()} on ${process.platform} ${process.arch}`);
   createWindow();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
