@@ -2,7 +2,7 @@ export type Stage = 'ideas' | 'planned' | 'progress' | 'testing' | 'shipped';
 export type Priority = 'low' | 'normal' | 'high' | 'critical';
 export type Effort = 'xs' | 's' | 'm' | 'l' | 'xl';
 export type ReleaseStatus = 'planned' | 'active' | 'released';
-export type ViewId = 'focus' | 'board' | 'timeline' | 'releases' | 'list' | 'archive' | 'settings';
+export type ViewId = 'focus' | 'inbox' | 'board' | 'timeline' | 'releases' | 'list' | 'archive' | 'settings';
 
 export interface ChecklistItem {
   id: string;
@@ -17,6 +17,12 @@ export interface CardLink {
 }
 
 export interface CardUpdate {
+  id: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface IdeaInboxNote {
   id: string;
   text: string;
   createdAt: string;
@@ -66,18 +72,19 @@ export interface RoadmapSettings {
 
 export interface ActivityEntry {
   id: string;
-  type: 'created' | 'moved' | 'updated' | 'archived' | 'restored' | 'release';
+  type: 'created' | 'moved' | 'updated' | 'archived' | 'restored' | 'release' | 'inbox';
   cardId?: string;
   message: string;
   createdAt: string;
 }
 
 export interface RoadmapData {
-  version: 2;
+  version: 3;
   cards: RoadmapCard[];
   releases: RoadmapRelease[];
   settings: RoadmapSettings;
   activity: ActivityEntry[];
+  inbox: IdeaInboxNote[];
 }
 
 export interface DemeRoadmapApi {
