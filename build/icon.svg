@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Deme Roadmap">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#17131f"/>
+      <stop offset="1" stop-color="#0f0d14"/>
+    </linearGradient>
+    <linearGradient id="deme" x1="0.08" y1="0.08" x2="0.9" y2="0.92">
+      <stop offset="0" stop-color="#c4b5fd"/>
+      <stop offset="0.52" stop-color="#f0abfc"/>
+      <stop offset="1" stop-color="#fbcfe8"/>
+    </linearGradient>
+    <radialGradient id="orb" cx="35%" cy="30%" r="75%">
+      <stop offset="0" stop-color="#fff1ff"/>
+      <stop offset="0.3" stop-color="#f0abfc"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </radialGradient>
+    <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+    <filter id="orbGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+  </defs>
+
+  <rect x="22" y="22" width="468" height="468" rx="116" fill="url(#bg)" stroke="#332a42" stroke-width="4"/>
+  <ellipse cx="315" cy="169" rx="150" ry="132" fill="#b69cff" opacity="0.08" filter="url(#softGlow)"/>
+
+  <path fill="url(#deme)" fill-rule="evenodd" d="M130 99h122c111 0 181 62 181 157s-70 157-181 157H130V99Zm91 79v156h33c53 0 88-30 88-78s-35-78-88-78h-33Z"/>
+  <path d="M221 220c27-22 58-32 94-30" fill="none" stroke="#111018" stroke-width="18" stroke-linecap="round" opacity="0.78"/>
+  <path d="M221 287c31 20 64 28 98 22" fill="none" stroke="#111018" stroke-width="18" stroke-linecap="round" opacity="0.78"/>
+
+  <circle cx="375" cy="132" r="40" fill="#f0abfc" opacity="0.18" filter="url(#orbGlow)"/>
+  <circle cx="375" cy="132" r="23" fill="url(#orb)"/>
+  <circle cx="367" cy="124" r="7" fill="#fff6ff" opacity="0.72"/>
+</svg>
