@@ -78,7 +78,7 @@ async function verifyPasscode(passcode, config) {
 }
 function requireUnlocked() {
   if (!sessionUnlocked) {
-    const error = new Error('Deme Roadmap is locked.');
+    const error = new Error('Deme Ops is locked.');
     error.code = 'ROADMAP_LOCKED';
     throw error;
   }
@@ -95,20 +95,20 @@ async function writeRoadmapFile(data, source = 'system') {
   await fs.writeFile(temp, JSON.stringify(data, null, 2), 'utf8');
   await fs.rename(temp, target);
   roadmapRevision += 1;
-  if (source === 'companion') await logBackend(`Canonical roadmap updated from a paired companion; revision ${roadmapRevision}.`);
+  if (source === 'companion') await logBackend(`Canonical work data updated from a paired companion; revision ${roadmapRevision}.`);
   return target;
 }
 async function readRoadmapFile(fallback) {
   try {
     const raw = await fs.readFile(roadmapPath(), 'utf8');
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.cards)) throw new Error('Roadmap file has an invalid shape.');
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.cards)) throw new Error('Work data has an invalid shape.');
     return parsed;
   } catch (error) {
     if (error && error.code !== 'ENOENT') {
       const brokenPath = `${roadmapPath()}.broken-${Date.now()}`;
       try { await fs.copyFile(roadmapPath(), brokenPath); } catch { /* best effort */ }
-      await logStartup(`Recovered an unreadable roadmap file: ${error.message || String(error)}`);
+      await logStartup(`Recovered an unreadable work-data file: ${error.message || String(error)}`);
     }
     await writeRoadmapFile(fallback, 'recovery');
     return fallback;
@@ -120,7 +120,7 @@ async function readRoadmap(fallback) {
 async function writeRoadmap(data, source = 'system', expectedRevision = null) {
   return enqueueRoadmap(async () => {
     if (typeof expectedRevision === 'number' && expectedRevision !== roadmapRevision) {
-      const error = new Error('Roadmap changed before this save. Reload the canonical copy and try again.');
+      const error = new Error('Work data changed before this save. Reload the canonical copy and try again.');
       error.code = 'STALE_ROADMAP_REVISION';
       throw error;
     }
@@ -148,12 +148,12 @@ async function reportRendererFailure(title, detail) {
   await logStartup(`${title}: ${detail}`);
   showWindow();
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  dialog.showMessageBox(mainWindow, { type: 'error', title: 'Deme Roadmap could not finish starting', message: title, detail: `${detail}\n\nA diagnostic log was saved to:\n${startupLogPath()}`, buttons: ['OK'] }).catch(() => undefined);
+  dialog.showMessageBox(mainWindow, { type: 'error', title: 'Deme Ops could not finish starting', message: title, detail: `${detail}\n\nA diagnostic log was saved to:\n${startupLogPath()}`, buttons: ['OK'] }).catch(() => undefined);
 }
 const WINDOW_THEMES = {
-  candy: { background: '#f8edf7', overlay: '#f8edf7', symbols: '#7f6887' },
-  night: { background: '#171322', overlay: '#171322', symbols: '#d7c9e9' },
-  paper: { background: '#f4eadb', overlay: '#f4eadb', symbols: '#715f58' },
+  candy: { background: '#f4f5f7', overlay: '#f4f5f7', symbols: '#555c68' },
+  night: { background: '#0d1015', overlay: '#0d1015', symbols: '#c7ccd5' },
+  paper: { background: '#f2efe9', overlay: '#f2efe9', symbols: '#625c55' },
 };
 function applyWindowTheme(theme) {
   const choice = WINDOW_THEMES[theme] || WINDOW_THEMES.candy;
@@ -169,11 +169,11 @@ async function lockFromCompanion() {
   sessionUnlocked = false;
   lanServer?.broadcast('desktop-locked');
   sendToRenderer('security:locked-remotely');
-  await logBackend('Workspace locked from a paired companion.');
+  await logBackend('Deme Ops locked from a paired companion.');
 }
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1500, height: 930, minWidth: 1120, minHeight: 700, backgroundColor: WINDOW_THEMES.candy.background, title: 'Deme Roadmap', show: false, autoHideMenuBar: true,
+    width: 1500, height: 930, minWidth: 1120, minHeight: 700, backgroundColor: WINDOW_THEMES.candy.background, title: 'Deme Ops', show: false, autoHideMenuBar: true,
     titleBarStyle: 'hidden', titleBarOverlay: { color: WINDOW_THEMES.candy.overlay, symbolColor: WINDOW_THEMES.candy.symbols, height: 44 },
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
@@ -183,18 +183,18 @@ function createWindow() {
   mainWindow.webContents.once('did-finish-load', reveal);
   const visibilityFallback = setTimeout(() => { if (!startupSettled) { logStartup('Renderer did not emit ready-to-show within 4 seconds; forcing the window visible.'); showWindow(); } }, 4000);
   visibilityFallback.unref?.();
-  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => { if (isMainFrame) reportRendererFailure('The Roadmap page failed to load.', `${errorCode}: ${errorDescription}${validatedURL ? `\n${validatedURL}` : ''}`); });
-  mainWindow.webContents.on('render-process-gone', (_event, details) => reportRendererFailure('The Roadmap renderer stopped unexpectedly.', `${details.reason}${typeof details.exitCode === 'number' ? ` (exit ${details.exitCode})` : ''}`));
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => { if (isMainFrame) reportRendererFailure('The Deme Ops page failed to load.', `${errorCode}: ${errorDescription}${validatedURL ? `\n${validatedURL}` : ''}`); });
+  mainWindow.webContents.on('render-process-gone', (_event, details) => reportRendererFailure('The Deme Ops renderer stopped unexpectedly.', `${details.reason}${typeof details.exitCode === 'number' ? ` (exit ${details.exitCode})` : ''}`));
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { if (url.startsWith('https://') || url.startsWith('http://')) shell.openExternal(url); return { action: 'deny' }; });
   mainWindow.webContents.on('will-navigate', (event, url) => { if (!isDev && url !== mainWindow.webContents.getURL()) event.preventDefault(); });
   const rendererId = mainWindow.webContents.id;
   mainWindow.webContents.on('destroyed', () => rendererRevisions.delete(rendererId));
   const loadPromise = isDev ? mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL) : mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
-  loadPromise.catch((error) => reportRendererFailure('Deme Roadmap could not load its interface.', error.message || String(error)));
+  loadPromise.catch((error) => reportRendererFailure('Deme Ops could not load its interface.', error.message || String(error)));
 }
 function requireLanServer() {
   if (!lanServer) {
-    const error = new Error(backendFailure || 'The Connected Workspace backend is not running.');
+    const error = new Error(backendFailure || 'The Deme Ops local backend is not running.');
     error.code = 'LAN_BACKEND_OFFLINE';
     throw error;
   }
@@ -224,7 +224,7 @@ async function startConnectedBackend() {
   } catch (error) {
     backendFailure = error?.message || String(error);
     lanServer = null;
-    await logBackend(`Connected Workspace backend failed to start: ${error.stack || error.message || String(error)}`);
+    await logBackend(`Deme Ops local backend failed to start: ${error.stack || error.message || String(error)}`);
     sendToRenderer('network:changed');
     return { ok: false, error: backendFailure };
   }
@@ -244,11 +244,11 @@ ipcMain.handle('security:status', async () => {
 });
 ipcMain.handle('security:setup', async (_event, passcode) => {
   const current = await readSecurity();
-  if (current.configured) return { ok: false, error: current.corrupt ? 'The local security file is damaged. Delete security.json from the Deme Roadmap app-data folder to reset the lock.' : 'A passcode is already configured.' };
+  if (current.configured) return { ok: false, error: current.corrupt ? 'The local security file is damaged. Delete security.json from the Deme Ops app-data folder to reset the lock.' : 'A passcode is already configured.' };
   if (!validPasscode(passcode)) return { ok: false, error: 'Use a 4–12 digit passcode.' };
   const salt = crypto.randomBytes(16); const hash = await derivePasscode(passcode, salt);
   await writeSecurity({ version: 1, configured: true, salt: salt.toString('hex'), hash: hash.toString('hex'), autoLockMinutes: 15 });
-  sessionUnlocked = true; lanServer?.broadcast('desktop-unlocked'); await logStartup('Roadmap passcode configured.'); return { ok: true };
+  sessionUnlocked = true; lanServer?.broadcast('desktop-unlocked'); await logStartup('Deme Ops passcode configured.'); return { ok: true };
 });
 ipcMain.handle('security:verify', async (_event, passcode) => {
   const config = await readSecurity();
@@ -276,19 +276,19 @@ ipcMain.handle('roadmap:save', async (event, data) => {
   requireUnlocked();
   const rendererRevision = rendererRevisions.get(event.sender.id);
   if (typeof rendererRevision === 'number' && rendererRevision !== roadmapRevision) {
-    const error = new Error('Roadmap changed from a companion before this desktop save. Reloading the canonical copy is required.');
+    const error = new Error('Work data changed from a companion before this desktop save. Reloading the canonical copy is required.');
     error.code = 'STALE_ROADMAP_REVISION'; throw error;
   }
   await writeRoadmap(data, 'desktop', rendererRevision); rendererRevisions.set(event.sender.id, roadmapRevision); lanServer?.broadcast('roadmap-changed', { source: 'desktop', revision: roadmapRevision }); return { ok: true, revision: roadmapRevision };
 });
 ipcMain.handle('roadmap:export', async (_event, data) => {
-  requireUnlocked(); const result = await dialog.showSaveDialog(mainWindow, { title: 'Back up Deme Roadmap', defaultPath: `deme-roadmap-backup-${new Date().toISOString().slice(0, 10)}.json`, filters: [{ name: 'JSON', extensions: ['json'] }] });
+  requireUnlocked(); const result = await dialog.showSaveDialog(mainWindow, { title: 'Back up Deme Ops work data', defaultPath: `deme-ops-backup-${new Date().toISOString().slice(0, 10)}.json`, filters: [{ name: 'JSON', extensions: ['json'] }] });
   if (result.canceled || !result.filePath) return { canceled: true }; await fs.writeFile(result.filePath, JSON.stringify(data, null, 2), 'utf8'); return { canceled: false, filePath: result.filePath };
 });
 ipcMain.handle('roadmap:import', async (event) => {
-  requireUnlocked(); const result = await dialog.showOpenDialog(mainWindow, { title: 'Restore Deme Roadmap backup', properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] });
+  requireUnlocked(); const result = await dialog.showOpenDialog(mainWindow, { title: 'Restore Deme Ops backup', properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] });
   if (result.canceled || !result.filePaths[0]) return { canceled: true };
-  const parsed = JSON.parse(await fs.readFile(result.filePaths[0], 'utf8')); if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.cards)) throw new Error('That file is not a Deme Roadmap backup.');
+  const parsed = JSON.parse(await fs.readFile(result.filePaths[0], 'utf8')); if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.cards)) throw new Error('That file is not a Deme Ops backup.');
   await writeRoadmap(parsed, 'restore'); rendererRevisions.set(event.sender.id, roadmapRevision); lanServer?.broadcast('roadmap-changed', { source: 'restore', revision: roadmapRevision }); return { canceled: false, data: parsed };
 });
 ipcMain.handle('roadmap:data-path', () => { requireUnlocked(); return roadmapPath(); });
@@ -305,7 +305,7 @@ ipcMain.handle('network:revoke-device', async (_event, deviceId) => { requireUnl
 ipcMain.handle('network:revoke-all-devices', async () => { requireUnlocked(); return requireLanServer().revokeAllDevices(); });
 ipcMain.handle('network:webhook-secret', () => { requireUnlocked(); return { secret: requireLanServer().webhookSecret() }; });
 ipcMain.handle('network:regenerate-webhook', async () => { requireUnlocked(); return requireLanServer().regenerateWebhookSecret(); });
-ipcMain.handle('network:send-test-event', async () => { requireUnlocked(); const event = await requireLanServer().addIncomingEvent({ source: 'Deme Roadmap', eventType: 'test', title: 'Connected Workspace test event', summary: 'The local incoming event pipeline is working.', severity: 'info', metadata: { test: true } }, 'Deme Roadmap'); return { ok: true, event }; });
+ipcMain.handle('network:send-test-event', async () => { requireUnlocked(); const event = await requireLanServer().addIncomingEvent({ source: 'Deme Ops', eventType: 'test', title: 'Deme Ops test signal', summary: 'The local Signals pipeline is working.', severity: 'info', metadata: { test: true } }, 'Deme Ops'); return { ok: true, event }; });
 ipcMain.handle('network:events', () => { requireUnlocked(); return requireLanServer().listEvents(); });
 ipcMain.handle('network:update-event', async (_event, eventId, patch) => { requireUnlocked(); return requireLanServer().updateEvent(String(eventId || ''), patch || {}); });
 ipcMain.handle('network:delete-event', async (_event, eventId) => { requireUnlocked(); return requireLanServer().deleteEvent(String(eventId || '')); });
@@ -331,7 +331,7 @@ if (gotSingleInstanceLock) {
   app.on('second-instance', () => { if (!mainWindow || mainWindow.isDestroyed()) return; if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); });
   app.whenReady().then(async () => {
     app.setAppUserModelId('com.demeapp.roadmap');
-    await logStartup(`Starting Deme Roadmap ${app.getVersion()} on ${process.platform} ${process.arch}`);
+    await logStartup(`Starting Deme Ops ${app.getVersion()} on ${process.platform} ${process.arch}`);
     createWindow();
     await startConnectedBackend();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

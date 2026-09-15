@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import App from './App';
-import { ConnectedDock } from './components/ConnectedDock';
+import { OpsSearchBridge } from './components/OpsSearchBridge';
+import { OpsShell } from './components/OpsShell';
 
 export default function AppV6() {
   const [unlocked, setUnlocked] = useState(false);
@@ -41,7 +42,7 @@ export default function AppV6() {
   return (
     <>
       <App />
-      {unlocked && <ConnectedDock />}
+      {unlocked && <><OpsShell /><OpsSearchBridge /></>}
     </>
   );
 }

@@ -1,55 +1,48 @@
-# Deme Roadmap
+# Deme Ops
 
-A local-first Windows desktop roadmap and release planner for Deme.
+Deme Ops is Deme's private, local-first Windows operations workspace.
 
-Deme Roadmap is deliberately simpler than Trello/Jira-style project-management suites: open it, see what matters, move work forward, close it. There is no account, hosted workspace or production-server dependency.
+It started as Deme Roadmap, but 0.6.1 changes the product direction: this is no longer primarily a Trello-style feature board. Deme Ops is the place for product delivery, QA, launch readiness, incoming operational signals, connected systems, local evidence and future Deme-wide intelligence such as moderation activity and app metrics.
 
-## Version 0.2
+The Windows desktop remains authoritative. Canonical work data stays local on the PC, the existing passcode system remains intact, and the LAN companion only works through explicit device pairing while Deme Ops is unlocked.
 
-0.2 turns the original board prototype into a fuller product-planning application while keeping the UI quiet and understandable.
+## 0.6.1 information architecture
 
-### Views
+The desktop intentionally has five top-level concepts:
 
-- **Focus** — active work, testing, overdue targets, blocked items, due-soon work, the active release and recent local activity.
-- **Board** — Ideas → Planned → In progress → Testing → Shipped, with drag-and-drop and stable ordering.
-- **Roadmap** — a multi-month timeline grouped by Deme product area, including release markers and unscheduled work.
-- **Releases** — real release objects with status, target dates, goals and automatic shipped progress.
-- **All items** — a compact sortable table for fast scanning.
-- **Archive** — hide old or rejected work without destroying it.
-- **Settings** — local behaviour, Deme product areas and backup/data controls.
+- **Overview** — operational dashboard showing the active release, blockers, QA state, incoming signals, backend health, service checks and recent activity.
+- **Work** — delivery, QA, schedule, ideas, notes, decisions, launch, planning, all work and archive as contextual tools rather than permanent top-level tabs.
+- **Signals** — machine/system inbox for authenticated events now and future moderation/integration signals later.
+- **Systems** — local companion/LAN health, trusted devices, incoming API, service checks and provider connection shells.
+- **Settings** — appearance, workspace behaviour, local security and data controls.
 
-### Roadmap items
+The phone companion is deliberately smaller:
 
-Items support:
+- **Home**
+- **Add**
+- **Work**
+- **Signals**
 
-- description
-- stage and product area
-- Low / Normal / High / Critical priority
-- XS–XL effort estimate
-- release assignment
-- start and target dates
-- labels
-- checklists
-- blockers/dependencies
-- external links
-- private progress notes/updates
-- pinning to Focus
-- archive, restore, duplicate and permanent delete
+Delivery, Bugs and Notes live inside Work instead of becoming separate permanent navigation items.
 
-### Desktop workflow
+## Connected Workspace foundation
 
-- `Ctrl + N` quick capture
-- `Ctrl + K` command palette
-- `Ctrl + F` roadmap search
-- autosave to the Windows app-data directory
-- atomic local JSON writes
-- native backup/restore dialogs
-- Show in folder from Settings
-- NSIS installer with Desktop and Start Menu shortcuts
+Deme Ops starts an in-process HTTP backend with the desktop app. It:
 
-### 0.1 data migration
+- supports localhost and private/link-local LAN sources only
+- chooses a fallback port when the preferred port is busy
+- requires strong paired-device bearer tokens for private endpoints
+- persists only token hashes for paired devices
+- uses short-lived pairing codes followed by explicit desktop approval
+- blocks companion private access whenever the desktop is locked
+- exposes Server-Sent Events for live update notifications
+- stores paired-device configuration, incoming events and attachment metadata in Electron `userData`
+- stores attachment files under a generated-ID attachment directory with path and size validation
+- keeps `roadmap.json` canonical and uses revision-aware writes to prevent stale desktop saves overwriting companion changes
 
-Existing 0.1 data is migrated in the renderer on first load. Legacy release text values are converted into 0.2 release objects and existing cards keep their content, stage, dates, checklists and archive state.
+## Existing data and upgrade compatibility
+
+0.6.1 keeps the internal application identity compatible with the existing install while changing the user-facing product and installer name to **Deme Ops**. Existing Roadmap data, `security.json`, paired devices, incoming events and attachments are not intentionally reset by the rebrand.
 
 ## Development
 
@@ -58,7 +51,7 @@ npm install
 npm run dev
 ```
 
-Typecheck and production renderer build:
+Validate QA, the mobile companion, TypeScript and the production renderer:
 
 ```bash
 npm run build
@@ -70,4 +63,4 @@ Build the Windows installer:
 npm run dist:win
 ```
 
-The app data file is kept under Electron's Windows `userData` directory as `roadmap.json`. The app does not require a remote database or Deme's production backend.
+The release installer is named `Deme-Ops-Setup-<version>.exe`.

@@ -1,0 +1,5 @@
+.ops-search-bridge{display:none;position:fixed;z-index:106;top:31px;right:300px;width:min(300px,24vw);height:32px;align-items:center;gap:7px;padding:0 9px;border:1px solid var(--ops-line);border-radius:9px;background:var(--ops-surface-2);color:var(--ops-muted)}
+.ops-search-bridge input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:var(--ops-text);font-size:10px}
+.ops-search-bridge input::placeholder{color:var(--ops-muted)}
+html[data-ops-section="work"] .ops-search-bridge{display:flex}
+@media(max-width:1180px){.ops-search-bridge{right:270px;width:220px}}
