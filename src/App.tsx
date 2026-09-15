@@ -18,6 +18,7 @@ import {
   Settings,
   Sparkles,
 } from 'lucide-react';
+import { APP_VERSION } from './appVersion';
 import { CardEditor } from './components/CardEditor';
 import { FilterBar } from './components/FilterBar';
 import { IdeaInboxView } from './components/IdeaInbox';
@@ -462,7 +463,7 @@ export default function App() {
         <div className="sidebar-spacer" />
         {activeRelease && <button className="sidebar-release" type="button" onClick={() => openRelease(activeRelease.id)}><span className="live-dot" /><span><small>Growing now</small><strong>{activeRelease.name}</strong></span></button>}
         <button className={`nav-button settings-nav ${effectiveView === 'settings' ? 'active' : ''}`} type="button" onClick={() => navigate('settings')}><Settings size={18} /><span>Settings</span></button>
-        <div className={`save-state ${saveState}`}><span /> {saveState === 'saving' ? 'Saving locally…' : saveState === 'error' ? 'Couldn’t save' : 'Safe on this PC'}</div><div className="version-mark">v0.5 ✦</div>
+        <div className={`save-state ${saveState}`}><span /> {saveState === 'saving' ? 'Saving locally…' : saveState === 'error' ? 'Couldn’t save' : 'Safe on this PC'}</div><div className="version-mark">v{APP_VERSION} ✦</div>
       </aside>
 
       <main className="main-area v2-main v3-main v5-main">
