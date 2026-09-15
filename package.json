@@ -1,10 +1,10 @@
 {
   "name": "deme-roadmap",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "author": "Deme App LTD",
-  "description": "A cute, local-first Windows release board, roadmap and QA workspace for Deme.",
+  "description": "A private, customisable local-first Windows roadmap, QA and launch workspace for Deme.",
   "main": "electron/main.cjs",
   "scripts": {
     "prepare:qa": "node scripts/generate-qa-catalog.mjs",
