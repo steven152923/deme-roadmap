@@ -6,6 +6,7 @@ import './cute.css';
 import './work.css';
 import './v5.css';
 import './connected.css';
+import './ops.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
