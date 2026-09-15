@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import App from './App';
 import { ConnectedDock } from './components/ConnectedDock';
 
 export default function AppV6() {
   const [unlocked, setUnlocked] = useState(false);
+  const reloadingRef = useRef(false);
 
   useEffect(() => {
     let active = true;
-    async function check() {
+    async function checkSecurity() {
       try {
         const status = await window.demeRoadmap?.securityStatus();
         if (active) setUnlocked(Boolean(status?.unlocked));
@@ -15,8 +16,8 @@ export default function AppV6() {
         if (active) setUnlocked(false);
       }
     }
-    check();
-    const timer = window.setInterval(check, 1200);
+    checkSecurity();
+    const timer = window.setInterval(checkSecurity, 1000);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -24,12 +25,13 @@ export default function AppV6() {
   }, []);
 
   useEffect(() => {
-    const disposeExternal = window.demeRoadmap?.onRoadmapExternalChange(() => {
-      window.setTimeout(() => window.location.reload(), 180);
-    });
-    const disposeRemoteLock = window.demeRoadmap?.onRemoteLock(() => {
-      window.location.reload();
-    });
+    const reloadOnce = () => {
+      if (reloadingRef.current) return;
+      reloadingRef.current = true;
+      window.setTimeout(() => window.location.reload(), 90);
+    };
+    const disposeExternal = window.demeRoadmap?.onRoadmapExternalChange(reloadOnce);
+    const disposeRemoteLock = window.demeRoadmap?.onRemoteLock(reloadOnce);
     return () => {
       disposeExternal?.();
       disposeRemoteLock?.();
