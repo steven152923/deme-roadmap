@@ -9,6 +9,19 @@ function roadmapPath() {
   return path.join(app.getPath('userData'), 'roadmap.json');
 }
 
+function startupLogPath() {
+  return path.join(app.getPath('userData'), 'startup.log');
+}
+
+async function logStartup(message) {
+  try {
+    await fs.mkdir(app.getPath('userData'), { recursive: true });
+    await fs.appendFile(startupLogPath(), `[${new Date().toISOString()}] ${message}\n`, 'utf8');
+  } catch {
+    // Logging must never become another startup failure.
+  }
+}
+
 async function writeRoadmap(data) {
   const target = roadmapPath();
   const temp = `${target}.tmp`;
@@ -34,10 +47,29 @@ async function readRoadmap(fallback) {
       } catch {
         // Startup should remain resilient even if the recovery copy cannot be written.
       }
+      await logStartup(`Recovered an unreadable roadmap file: ${error.message || String(error)}`);
     }
     await writeRoadmap(fallback);
     return fallback;
   }
+}
+
+function showWindow() {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
+  mainWindow.show();
+}
+
+async function reportRendererFailure(title, detail) {
+  await logStartup(`${title}: ${detail}`);
+  showWindow();
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  dialog.showMessageBox(mainWindow, {
+    type: 'error',
+    title: 'Deme Roadmap could not finish starting',
+    message: title,
+    detail: `${detail}\n\nA diagnostic log was saved to:\n${startupLogPath()}`,
+    buttons: ['OK'],
+  }).catch(() => undefined);
 }
 
 function createWindow() {
@@ -46,14 +78,14 @@ function createWindow() {
     height: 930,
     minWidth: 1120,
     minHeight: 700,
-    backgroundColor: '#09080c',
+    backgroundColor: '#f8edf7',
     title: 'Deme Roadmap',
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
-      color: '#09080c',
-      symbolColor: '#aaa4b7',
+      color: '#f8edf7',
+      symbolColor: '#7f6887',
       height: 44,
     },
     webPreferences: {
@@ -64,7 +96,31 @@ function createWindow() {
     },
   });
 
-  mainWindow.once('ready-to-show', () => mainWindow.show());
+  let startupSettled = false;
+  const reveal = () => {
+    startupSettled = true;
+    showWindow();
+  };
+
+  mainWindow.once('ready-to-show', reveal);
+  mainWindow.webContents.once('did-finish-load', reveal);
+
+  const visibilityFallback = setTimeout(() => {
+    if (!startupSettled) {
+      logStartup('Renderer did not emit ready-to-show within 4 seconds; forcing the window visible.');
+      showWindow();
+    }
+  }, 4000);
+  visibilityFallback.unref?.();
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame) return;
+    reportRendererFailure('The Roadmap page failed to load.', `${errorCode}: ${errorDescription}${validatedURL ? `\n${validatedURL}` : ''}`);
+  });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    reportRendererFailure('The Roadmap renderer stopped unexpectedly.', `${details.reason}${typeof details.exitCode === 'number' ? ` (exit ${details.exitCode})` : ''}`);
+  });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://') || url.startsWith('http://')) {
@@ -77,11 +133,13 @@ function createWindow() {
     if (!isDev && url !== mainWindow.webContents.getURL()) event.preventDefault();
   });
 
-  if (isDev) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
-  }
+  const loadPromise = isDev
+    ? mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
+    : mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+
+  loadPromise.catch((error) => {
+    reportRendererFailure('Deme Roadmap could not load its interface.', error.message || String(error));
+  });
 }
 
 ipcMain.handle('roadmap:load', async (_event, fallback) => readRoadmap(fallback));
@@ -120,8 +178,16 @@ ipcMain.handle('roadmap:reveal-data', () => {
   return { ok: true };
 });
 
+process.on('uncaughtException', (error) => {
+  logStartup(`Main-process uncaught exception: ${error.stack || error.message || String(error)}`);
+});
+process.on('unhandledRejection', (reason) => {
+  logStartup(`Main-process unhandled rejection: ${reason instanceof Error ? reason.stack || reason.message : String(reason)}`);
+});
+
 app.whenReady().then(() => {
   app.setAppUserModelId('com.demeapp.roadmap');
+  logStartup(`Starting Deme Roadmap ${app.getVersion()} on ${process.platform} ${process.arch}`);
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
