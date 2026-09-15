@@ -20,7 +20,6 @@ import {
   Files,
   FolderOpen,
   Gauge,
-  Github,
   HardDrive,
   Inbox,
   KeyRound,
@@ -95,7 +94,7 @@ const EMPTY_STATUS: NetworkStatus = {
 
 const PROVIDERS: Provider[] = [
   { id: 'deme-api', name: 'Deme Production API', icon: <Radio size={19} />, description: 'Production health, API status and app-side operational signals.', capability: 'Health checks, deploy context and production incidents.' },
-  { id: 'github', name: 'GitHub', icon: <Github size={19} />, description: 'Repository activity and CI signals for Deme.', capability: 'Actions failures, pull requests, releases and deploy commits.' },
+  { id: 'github', name: 'GitHub', icon: <Code2 size={19} />, description: 'Repository activity and CI signals for Deme.', capability: 'Actions failures, pull requests, releases and deploy commits.' },
   { id: 'render', name: 'Render', icon: <Cloud size={19} />, description: 'Deme server deploy and service health.', capability: 'Deploy states, service incidents, logs and metrics.' },
   { id: 'cloudflare', name: 'Cloudflare', icon: <ShieldCheck size={19} />, description: 'Pages, Workers and edge status.', capability: 'Deploy status, errors and edge availability.' },
   { id: 'qase', name: 'Qase', icon: <CheckCircle2 size={19} />, description: 'QA runs and regression results.', capability: 'Failed tests, run progress and release readiness.' },
