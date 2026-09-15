@@ -3,6 +3,7 @@ import {
   Archive,
   Columns3,
   Command,
+  Inbox,
   LayoutDashboard,
   List,
   Map as MapIcon,
@@ -10,13 +11,15 @@ import {
   Plus,
   Search,
   Settings,
+  Sparkles,
 } from 'lucide-react';
 import { CardEditor } from './components/CardEditor';
 import { FilterBar } from './components/FilterBar';
+import { IdeaInboxView } from './components/IdeaInbox';
 import { CommandPalette, QuickCapture, ReleaseEditor, type QuickCaptureValue } from './components/Overlays';
 import { ArchiveView, BoardView, FocusView, ListView, ReleasesView, SettingsView, TimelineView } from './components/Views';
 import { STAGE_LABEL, VIEW_TITLES } from './constants';
-import { DEFAULT_ROADMAP, newCard, newRelease, normaliseRoadmap, uid } from './data';
+import { DEFAULT_ROADMAP, newCard, newInboxNote, newRelease, normaliseRoadmap, uid } from './data';
 import type { ActivityEntry, RoadmapCard, RoadmapData, RoadmapRelease, Stage, ViewId } from './types';
 import { EMPTY_FILTERS, type RoadmapFilters } from './uiTypes';
 import { isDueSoon, isOverdue, matchesSearch, sortByOrder } from './utils';
@@ -162,8 +165,45 @@ export default function App() {
       targetDate: value.targetDate,
     });
     setQuickCaptureOpen(false);
-    setToast('Added to roadmap');
+    setToast('Added to roadmap ♡');
     if (value.stage === 'progress' || value.stage === 'testing') setSelectedId(id);
+  }
+
+  function addInboxThought(text: string) {
+    const note = newInboxNote(text);
+    setData((current) => ({
+      ...current,
+      inbox: [...current.inbox, note],
+      activity: appendActivity(current.activity, activity('inbox', 'Saved a thought to the Idea Inbox')),
+    }));
+    setToast('Thought tucked away ✦');
+  }
+
+  function deleteInboxThought(id: string) {
+    setData((current) => ({ ...current, inbox: current.inbox.filter((note) => note.id !== id) }));
+    setToast('Thought removed');
+  }
+
+  function promoteInboxThought(id: string) {
+    setData((current) => {
+      const note = current.inbox.find((item) => item.id === id);
+      if (!note) return current;
+      const text = note.text.trim();
+      const title = text.length > 88 ? `${text.slice(0, 85).trim()}…` : text;
+      const card = {
+        ...newCard('ideas', current.settings.areas[0] ?? 'Core', maxOrder(current.cards, 'ideas')),
+        title,
+        description: text.length > 88 ? text : '',
+      };
+      window.setTimeout(() => setSelectedId(card.id), 0);
+      return {
+        ...current,
+        inbox: current.inbox.filter((item) => item.id !== id),
+        cards: [...current.cards, card],
+        activity: appendActivity(current.activity, activity('created', `Promoted “${title}” from the Idea Inbox`, card.id)),
+      };
+    });
+    setToast('Now it is a roadmap item ✨');
   }
 
   function updateCard(id: string, patch: Partial<RoadmapCard>) {
@@ -367,13 +407,17 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell v2-shell">
+    <div className="app-shell v2-shell v3-shell">
       <div className="window-drag-region" />
-      <aside className="sidebar v2-sidebar">
+      <aside className="sidebar v2-sidebar v3-sidebar">
         <DemeBrand />
+        <div className="sidebar-cloud cloud-a" />
+        <div className="sidebar-star star-a">✦</div>
+        <div className="sidebar-star star-b">♡</div>
 
         <nav className="nav-stack" aria-label="Roadmap views">
           <NavButton active={view === 'focus'} icon={<LayoutDashboard size={18} />} label="Focus" onClick={() => navigate('focus')} />
+          <NavButton active={view === 'inbox'} icon={<Inbox size={18} />} label="Idea inbox" count={data.inbox.length} onClick={() => navigate('inbox')} />
           <NavButton active={view === 'board'} icon={<Columns3 size={18} />} label="Board" count={totalOpen} onClick={() => navigate('board')} />
           <NavButton active={view === 'timeline'} icon={<MapIcon size={18} />} label="Roadmap" onClick={() => navigate('timeline')} />
           <NavButton active={view === 'releases'} icon={<PackageCheck size={18} />} label="Releases" count={data.releases.filter((release) => release.status !== 'released').length} onClick={() => navigate('releases')} />
@@ -386,22 +430,26 @@ export default function App() {
         {activeRelease && (
           <button className="sidebar-release" type="button" onClick={() => navigate('releases')}>
             <span className="live-dot" />
-            <span><small>Active release</small><strong>{activeRelease.name}</strong></span>
+            <span><small>Growing now</small><strong>{activeRelease.name}</strong></span>
           </button>
         )}
 
         <button className={`nav-button settings-nav ${view === 'settings' ? 'active' : ''}`} type="button" onClick={() => navigate('settings')}><Settings size={18} /><span>Settings</span></button>
-        <div className={`save-state ${saveState}`}><span /> {saveState === 'saving' ? 'Saving locally…' : saveState === 'error' ? 'Couldn’t save' : 'Saved on this PC'}</div>
-        <div className="version-mark">v0.2</div>
+        <div className={`save-state ${saveState}`}><span /> {saveState === 'saving' ? 'Saving locally…' : saveState === 'error' ? 'Couldn’t save' : 'Safe on this PC'}</div>
+        <div className="version-mark">v0.3 ♡</div>
       </aside>
 
-      <main className="main-area v2-main">
-        <header className="topbar v2-topbar">
+      <main className="main-area v2-main v3-main">
+        <header className="topbar v2-topbar v3-topbar">
+          <div className="header-cloud header-cloud-left" />
+          <div className="header-cloud header-cloud-right" />
+          <span className="header-sparkle hs-one">✦</span>
+          <span className="header-sparkle hs-two">✧</span>
           <div className="topbar-title"><p className="eyebrow">{title.eyebrow}</p><h1>{title.title}</h1></div>
           <div className="topbar-actions">
-            <label className="search-box v2-search"><Search size={17} /><input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search roadmap" /><kbd>Ctrl F</kbd></label>
+            <label className="search-box v2-search"><Search size={17} /><input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Find something…" /><kbd>Ctrl F</kbd></label>
             <button className="command-button" type="button" onClick={() => setCommandOpen(true)} title="Command palette"><Command size={17} /><kbd>Ctrl K</kbd></button>
-            <button className="primary-button" type="button" onClick={() => setQuickCaptureOpen(true)}><Plus size={18} /> Add item</button>
+            <button className="primary-button cute-primary" type="button" onClick={() => setQuickCaptureOpen(true)}><Plus size={18} /> Add item</button>
           </div>
         </header>
 
@@ -416,11 +464,13 @@ export default function App() {
           />
         )}
 
-        <section className={`content v2-content view-${view}`}>
+        <section className={`content v2-content v3-content view-${view}`}>
           {!loaded ? (
             <LoadingState />
           ) : view === 'focus' ? (
             <FocusView cards={visibleCards} allCards={data.cards} releases={data.releases} activity={data.activity} dueSoonDays={data.settings.dueSoonDays} onSelect={setSelectedId} onAdd={() => setQuickCaptureOpen(true)} onNavigate={navigate} />
+          ) : view === 'inbox' ? (
+            <IdeaInboxView notes={data.inbox} onAdd={addInboxThought} onPromote={promoteInboxThought} onDelete={deleteInboxThought} />
           ) : view === 'board' ? (
             <BoardView cards={visibleCards} allCards={data.cards} releases={data.releases} compact={data.settings.compactCards} showShipped={data.settings.showShippedOnBoard} onSelect={setSelectedId} onMove={moveCard} onReorder={reorderCard} onAdd={(stage) => createItem(stage)} />
           ) : view === 'timeline' ? (
@@ -456,7 +506,7 @@ export default function App() {
       <ReleaseEditor release={editedRelease} onClose={() => setReleaseEditorId(null)} onChange={(patch) => editedRelease && updateRelease(editedRelease.id, patch)} onDelete={() => editedRelease && deleteRelease(editedRelease.id)} />
       <CommandPalette open={commandOpen} cards={data.cards} releases={data.releases} onClose={() => setCommandOpen(false)} onSelectCard={setSelectedId} onNavigate={navigate} onNewItem={() => setQuickCaptureOpen(true)} onNewRelease={createRelease} onBackup={exportBackup} />
 
-      {toast && <div className="toast v2-toast"><span className="toast-dot" /> {toast}</div>}
+      {toast && <div className="toast v2-toast v3-toast"><span className="toast-dot" /> {toast}</div>}
     </div>
   );
 }
@@ -467,13 +517,14 @@ function NavButton({ active, icon, label, count, onClick }: { active: boolean; i
 
 function DemeBrand() {
   return (
-    <div className="deme-brand-v2">
+    <div className="deme-brand-v2 deme-brand-v3">
       <div className="deme-d-mark"><span>D</span><i /></div>
-      <div className="deme-brand-copy"><strong>Deme</strong><small>Roadmap</small></div>
+      <div className="deme-brand-copy"><strong>Deme</strong><small>roadmap diary ✦</small></div>
+      <Sparkles className="brand-sparkle" size={18} />
     </div>
   );
 }
 
 function LoadingState() {
-  return <div className="loading-state v2-loading"><div className="loading-orb" /><p>Opening your roadmap…</p></div>;
+  return <div className="loading-state v2-loading v3-loading"><div className="loading-orb" /><p>Gathering all the little ideas…</p></div>;
 }
