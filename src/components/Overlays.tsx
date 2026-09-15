@@ -107,15 +107,26 @@ export function ReleaseEditor({ release, onClose, onChange, onDelete }: {
   onChange: (patch: Partial<RoadmapRelease>) => void;
   onDelete: () => void;
 }) {
-  if (!release) return null;
+  const [draft, setDraft] = useState<RoadmapRelease | null>(release ? { ...release } : null);
+
+  useEffect(() => {
+    setDraft(release ? { ...release } : null);
+  }, [release?.id]);
+
+  function patchDraft(patch: Partial<RoadmapRelease>) {
+    setDraft((current) => current ? { ...current, ...patch } : current);
+    onChange(patch);
+  }
+
+  if (!release || !draft) return null;
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div className="release-editor modal-card">
-        <div className="modal-head"><div><span className="modal-kicker">Release board</span><h2>{release.name || 'Untitled release'}</h2></div><button className="icon-button" type="button" onClick={onClose}>×</button></div>
+        <div className="modal-head"><div><span className="modal-kicker">Release board</span><h2>{draft.name || 'Untitled release'}</h2></div><button className="icon-button" type="button" onClick={onClose}>×</button></div>
         <div className="release-form">
-          <label className="field"><span>Name</span><input value={release.name} onChange={(event) => onChange({ name: event.target.value })} autoFocus /></label>
-          <div className="field-grid two"><label className="field"><span>Status</span><select value={release.status} onChange={(event) => onChange({ status: event.target.value as RoadmapRelease['status'] })}><option value="planned">Planned</option><option value="active">Active</option><option value="released">Released</option></select></label><label className="field"><span>Target date</span><input type="date" value={release.targetDate} onChange={(event) => onChange({ targetDate: event.target.value })} /></label></div>
-          <label className="field"><span>Goal / notes</span><textarea rows={7} value={release.notes} onChange={(event) => onChange({ notes: event.target.value })} placeholder="What should this release achieve?" /></label>
+          <label className="field"><span>Name</span><input value={draft.name} onChange={(event) => patchDraft({ name: event.target.value })} autoFocus /></label>
+          <div className="field-grid two"><label className="field"><span>Status</span><select value={draft.status} onChange={(event) => patchDraft({ status: event.target.value as RoadmapRelease['status'] })}><option value="planned">Planned</option><option value="active">Active</option><option value="released">Released</option></select></label><label className="field"><span>Target date</span><input type="date" value={draft.targetDate} onChange={(event) => patchDraft({ targetDate: event.target.value })} /></label></div>
+          <label className="field"><span>Goal / notes</span><textarea rows={7} value={draft.notes} onChange={(event) => patchDraft({ notes: event.target.value })} placeholder="What should this release achieve?" /></label>
         </div>
         <div className="modal-footer split"><button className="danger-button" type="button" onClick={onDelete}><Trash2 size={15} /> Delete release</button><button className="primary-button" type="button" onClick={onClose}>Done</button></div>
       </div>
