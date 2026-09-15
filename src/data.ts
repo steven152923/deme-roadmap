@@ -1,6 +1,7 @@
 import type {
   ActivityEntry,
   Effort,
+  IdeaInboxNote,
   Priority,
   ReleaseStatus,
   RoadmapCard,
@@ -33,11 +34,12 @@ export const DEFAULT_SETTINGS: RoadmapSettings = {
 };
 
 export const DEFAULT_ROADMAP: RoadmapData = {
-  version: 2,
+  version: 3,
   cards: [],
   releases: [],
   settings: DEFAULT_SETTINGS,
   activity: [],
+  inbox: [],
 };
 
 export function uid(prefix = 'id') {
@@ -83,7 +85,7 @@ function slug(value: string) {
 
 function normaliseSettings(value: unknown): RoadmapSettings {
   const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
-  const startView = ['focus', 'board', 'timeline', 'releases', 'list'].includes(String(raw.startView))
+  const startView = ['focus', 'inbox', 'board', 'timeline', 'releases', 'list'].includes(String(raw.startView))
     ? (raw.startView as RoadmapSettings['startView'])
     : DEFAULT_SETTINGS.startView;
   const areas = stringArray(raw.areas).map((item) => item.trim()).filter(Boolean);
@@ -104,7 +106,7 @@ function normaliseActivity(value: unknown): ActivityEntry[] {
     .slice(-250)
     .map((item) => {
       const raw = item as Record<string, unknown>;
-      const type = ['created', 'moved', 'updated', 'archived', 'restored', 'release'].includes(String(raw.type))
+      const type = ['created', 'moved', 'updated', 'archived', 'restored', 'release', 'inbox'].includes(String(raw.type))
         ? (raw.type as ActivityEntry['type'])
         : 'updated';
       return {
@@ -115,6 +117,21 @@ function normaliseActivity(value: unknown): ActivityEntry[] {
         createdAt: asString(raw.createdAt, new Date().toISOString()),
       };
     });
+}
+
+function normaliseInbox(value: unknown): IdeaInboxNote[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => {
+      const raw = item as Record<string, unknown>;
+      return {
+        id: asString(raw.id, uid('thought')),
+        text: asString(raw.text).trim(),
+        createdAt: asString(raw.createdAt, new Date().toISOString()),
+      };
+    })
+    .filter((item) => item.text);
 }
 
 export function normaliseRoadmap(input: unknown): RoadmapData {
@@ -145,22 +162,14 @@ export function normaliseRoadmap(input: unknown): RoadmapData {
     }
   }
 
-  // v0.1 stored release names directly on cards. Convert those names into real release objects.
+  // v0.1 stored release names directly on cards. Keep promoting them into real release objects.
   for (const item of rawCards) {
     if (!item || typeof item !== 'object') continue;
     const card = item as Record<string, unknown>;
     const legacyName = asString(card.release).trim();
     if (!legacyName || releaseByName.has(legacyName.toLowerCase())) continue;
     const id = `release-${slug(legacyName)}-${releaseByName.size + 1}`;
-    releases.push({
-      id,
-      name: legacyName,
-      status: 'planned',
-      targetDate: '',
-      notes: '',
-      createdAt: now,
-      updatedAt: now,
-    });
+    releases.push({ id, name: legacyName, status: 'planned', targetDate: '', notes: '', createdAt: now, updatedAt: now });
     releaseByName.set(legacyName.toLowerCase(), id);
   }
 
@@ -171,44 +180,24 @@ export function normaliseRoadmap(input: unknown): RoadmapData {
       const card = item as Record<string, unknown>;
       const legacyReleaseName = asString(card.release).trim();
       const releaseIdCandidate = asString(card.releaseId);
-      const releaseId = releaseIds.has(releaseIdCandidate)
-        ? releaseIdCandidate
-        : releaseByName.get(legacyReleaseName.toLowerCase()) ?? '';
+      const releaseId = releaseIds.has(releaseIdCandidate) ? releaseIdCandidate : releaseByName.get(legacyReleaseName.toLowerCase()) ?? '';
       const checklist = Array.isArray(card.checklist)
-        ? card.checklist
-            .filter((entry) => entry && typeof entry === 'object')
-            .map((entry) => {
-              const value = entry as Record<string, unknown>;
-              return {
-                id: asString(value.id, uid('check')),
-                text: asString(value.text),
-                done: asBoolean(value.done),
-              };
-            })
+        ? card.checklist.filter((entry) => entry && typeof entry === 'object').map((entry) => {
+            const value = entry as Record<string, unknown>;
+            return { id: asString(value.id, uid('check')), text: asString(value.text), done: asBoolean(value.done) };
+          })
         : [];
       const links = Array.isArray(card.links)
-        ? card.links
-            .filter((entry) => entry && typeof entry === 'object')
-            .map((entry) => {
-              const value = entry as Record<string, unknown>;
-              return {
-                id: asString(value.id, uid('link')),
-                label: asString(value.label),
-                url: asString(value.url),
-              };
-            })
+        ? card.links.filter((entry) => entry && typeof entry === 'object').map((entry) => {
+            const value = entry as Record<string, unknown>;
+            return { id: asString(value.id, uid('link')), label: asString(value.label), url: asString(value.url) };
+          })
         : [];
       const updates = Array.isArray(card.updates)
-        ? card.updates
-            .filter((entry) => entry && typeof entry === 'object')
-            .map((entry) => {
-              const value = entry as Record<string, unknown>;
-              return {
-                id: asString(value.id, uid('update')),
-                text: asString(value.text),
-                createdAt: asString(value.createdAt, now),
-              };
-            })
+        ? card.updates.filter((entry) => entry && typeof entry === 'object').map((entry) => {
+            const value = entry as Record<string, unknown>;
+            return { id: asString(value.id, uid('update')), text: asString(value.text), createdAt: asString(value.createdAt, now) };
+          })
         : [];
       return {
         id: asString(card.id, uid('card')),
@@ -235,54 +224,32 @@ export function normaliseRoadmap(input: unknown): RoadmapData {
     });
 
   const cardIds = new Set(cards.map((card) => card.id));
-  for (const card of cards) {
-    card.blockedBy = card.blockedBy.filter((id) => id !== card.id && cardIds.has(id));
-  }
+  for (const card of cards) card.blockedBy = card.blockedBy.filter((id) => id !== card.id && cardIds.has(id));
 
   return {
-    version: 2,
+    version: 3,
     cards,
     releases,
     settings: normaliseSettings(raw.settings),
     activity: normaliseActivity(raw.activity),
+    inbox: normaliseInbox(raw.inbox),
   };
 }
 
 export function newCard(stage: Stage, area: string, order: number): RoadmapCard {
   const now = new Date().toISOString();
   return {
-    id: uid('card'),
-    title: 'Untitled item',
-    description: '',
-    stage,
-    area: area || 'Core',
-    priority: 'normal',
-    effort: 'm',
-    releaseId: '',
-    startDate: '',
-    targetDate: '',
-    labels: [],
-    checklist: [],
-    blockedBy: [],
-    links: [],
-    updates: [],
-    pinned: false,
-    archived: false,
-    sortOrder: order,
-    createdAt: now,
-    updatedAt: now,
+    id: uid('card'), title: 'Untitled item', description: '', stage, area: area || 'Core', priority: 'normal', effort: 'm',
+    releaseId: '', startDate: '', targetDate: '', labels: [], checklist: [], blockedBy: [], links: [], updates: [],
+    pinned: false, archived: false, sortOrder: order, createdAt: now, updatedAt: now,
   };
 }
 
 export function newRelease(name = 'Next release'): RoadmapRelease {
   const now = new Date().toISOString();
-  return {
-    id: uid('release'),
-    name,
-    status: 'planned',
-    targetDate: '',
-    notes: '',
-    createdAt: now,
-    updatedAt: now,
-  };
+  return { id: uid('release'), name, status: 'planned', targetDate: '', notes: '', createdAt: now, updatedAt: now };
+}
+
+export function newInboxNote(text: string): IdeaInboxNote {
+  return { id: uid('thought'), text: text.trim(), createdAt: new Date().toISOString() };
 }
