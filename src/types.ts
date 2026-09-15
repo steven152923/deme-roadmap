@@ -61,16 +61,28 @@ export interface RoadmapData {
 
 export interface SecurityStatus { configured: boolean; unlocked: boolean; autoLockMinutes: number; }
 export interface SecurityActionResult { ok: boolean; error?: string; }
+export interface NetworkActionResult { ok: boolean; error?: string; [key: string]: unknown; }
 
 export interface PairedDevice {
   id: string;
   name: string;
-  createdAt: string;
+  deviceType: string;
+  userAgent: string;
+  pairedAt: string;
   lastSeen: string;
 }
 
-export type MonitorState = 'unknown' | 'online' | 'warning' | 'offline';
+export interface PendingPairing {
+  id: string;
+  name: string;
+  deviceType: string;
+  userAgent: string;
+  requestedAt: string;
+  expiresAt: string;
+  status: 'pending';
+}
 
+export type MonitorState = 'unknown' | 'online' | 'warning' | 'offline';
 export interface ServiceMonitor {
   id: string;
   name: string;
@@ -89,12 +101,21 @@ export interface NetworkStatus {
   addresses: string[];
   primaryUrl: string;
   loopbackUrl: string;
-  hookUrl: string;
+  webhookUrl: string;
   pairedDevices: number;
   devices: PairedDevice[];
+  pendingPairings: PendingPairing[];
   monitors: ServiceMonitor[];
-  eventsOpen: number;
+  eventsTotal: number;
+  eventsUnread: number;
   attachmentsCount: number;
+  attachmentBytes: number;
+  activeConnections: number;
+  liveStreams: number;
+  startedAt: string;
+  uptimeSeconds: number;
+  lastError: string;
+  backendLogPath: string;
 }
 
 export interface PairingInfo {
@@ -104,47 +125,43 @@ export interface PairingInfo {
   expiresAt: string;
 }
 
+export type IncomingSeverity = 'info' | 'warning' | 'high' | 'critical';
 export interface IncomingNetworkEvent {
   id: string;
   source: string;
+  eventType: string;
   title: string;
-  details: string;
-  severity: 'info' | 'warning' | 'critical';
+  summary: string;
+  severity: IncomingSeverity;
+  timestamp: string;
+  read: boolean;
+  archived: boolean;
+  metadata: Record<string, unknown>;
+  externalUrl: string;
+  linkedCardId: string;
   createdAt: string;
-  resolved: boolean;
-  resolvedAt: string;
+  updatedAt: string;
 }
 
 export interface AttachmentRecord {
   id: string;
-  name: string;
-  mime: string;
+  fileName: string;
+  mimeType: string;
   size: number;
-  source: string;
-  targetType: string;
-  targetId: string;
-  storedName: string;
   createdAt: string;
+  ownerType: string;
+  ownerId: string;
+  source: string;
+  storedName: string;
 }
-
-export interface NetworkActionResult {
-  ok: boolean;
-  error?: string;
-}
-
-export interface ChooseAttachmentResult {
-  canceled: boolean;
-  error?: string;
-  attachment?: AttachmentRecord;
-}
-
-export interface MonitorActionResult extends NetworkActionResult {
-  monitor?: ServiceMonitor;
-}
+export interface AttachmentTarget { type: string; id: string; label: string; }
+export interface AttachmentPreview { ok: boolean; dataUrl?: string; }
+export interface ChooseAttachmentResult { canceled: boolean; error?: string; attachment?: AttachmentRecord; }
+export interface MonitorActionResult extends NetworkActionResult { monitor?: ServiceMonitor; }
 
 export interface DemeRoadmapApi {
   load: (fallback: RoadmapData) => Promise<unknown>;
-  save: (data: RoadmapData) => Promise<{ ok: boolean }>;
+  save: (data: RoadmapData) => Promise<{ ok: boolean; revision?: number }>;
   exportBackup: (data: RoadmapData) => Promise<{ canceled: boolean; filePath?: string }>;
   importBackup: () => Promise<{ canceled: boolean; data?: unknown }>;
   dataPath: () => Promise<string>;
@@ -156,23 +173,38 @@ export interface DemeRoadmapApi {
   securityChange: (currentPasscode: string, nextPasscode: string) => Promise<SecurityActionResult>;
   securitySetAutoLock: (minutes: number) => Promise<SecurityActionResult>;
   setWindowTheme: (theme: ThemePreset) => Promise<{ ok: boolean }>;
+
   networkStatus: () => Promise<NetworkStatus>;
+  networkRestart: () => Promise<NetworkActionResult>;
   networkCreatePairing: () => Promise<PairingInfo>;
+  networkPendingPairings: () => Promise<PendingPairing[]>;
+  networkApprovePairing: (requestId: string) => Promise<NetworkActionResult>;
+  networkRejectPairing: (requestId: string) => Promise<NetworkActionResult>;
   networkDevices: () => Promise<PairedDevice[]>;
   networkRevokeDevice: (deviceId: string) => Promise<NetworkActionResult>;
+  networkRevokeAllDevices: () => Promise<NetworkActionResult>;
+  networkWebhookSecret: () => Promise<{ secret: string }>;
+  networkRegenerateWebhook: () => Promise<NetworkActionResult & { webhookSecret?: string }>;
+  networkSendTestEvent: () => Promise<NetworkActionResult>;
   networkEvents: () => Promise<IncomingNetworkEvent[]>;
-  networkResolveEvent: (eventId: string, resolved?: boolean) => Promise<NetworkActionResult>;
+  networkUpdateEvent: (eventId: string, patch: Partial<Pick<IncomingNetworkEvent, 'read' | 'archived'>>) => Promise<NetworkActionResult>;
   networkDeleteEvent: (eventId: string) => Promise<NetworkActionResult>;
+  networkConvertEvent: (eventId: string, kind: 'bug' | 'work') => Promise<NetworkActionResult & { cardId?: string }>;
   networkAttachments: () => Promise<AttachmentRecord[]>;
-  networkChooseAttachment: () => Promise<ChooseAttachmentResult>;
+  networkAttachmentTargets: () => Promise<AttachmentTarget[]>;
+  networkChooseAttachment: (ownerType?: string, ownerId?: string) => Promise<ChooseAttachmentResult>;
+  networkAddAttachment: (input: { name: string; mime: string; dataBase64: string; ownerType: string; ownerId: string }) => Promise<{ attachment: AttachmentRecord }>;
   networkDeleteAttachment: (attachmentId: string) => Promise<NetworkActionResult>;
   networkRevealAttachment: (attachmentId: string) => Promise<NetworkActionResult>;
+  networkOpenAttachment: (attachmentId: string) => Promise<NetworkActionResult>;
+  networkAttachmentPreview: (attachmentId: string) => Promise<AttachmentPreview>;
   networkMonitors: () => Promise<ServiceMonitor[]>;
   networkAddMonitor: (name: string, url: string) => Promise<MonitorActionResult>;
   networkRemoveMonitor: (monitorId: string) => Promise<NetworkActionResult>;
   networkCheckMonitors: () => Promise<ServiceMonitor[]>;
   networkOpenCompanion: () => Promise<NetworkActionResult>;
+
   onNetworkChanged: (callback: () => void) => () => void;
-  onRoadmapExternalChange: (callback: () => void) => () => void;
+  onRoadmapExternalChange: (callback: (payload?: { revision?: number }) => void) => () => void;
   onRemoteLock: (callback: () => void) => () => void;
 }
