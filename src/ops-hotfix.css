@@ -16,3 +16,14 @@
 html[data-ops-context="work"] .main-area {
   width: 100% !important;
 }
+
+/* Legacy editors must sit above the fixed Ops rail/topbar/context layers.
+   The Ops shell reaches z-index 110, while the pre-Ops modal system used 60. */
+.modal-backdrop,
+.drawer-backdrop {
+  z-index: 220 !important;
+}
+
+.command-backdrop {
+  z-index: 230 !important;
+}
