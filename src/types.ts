@@ -4,7 +4,7 @@ export type Effort = 'xs' | 's' | 'm' | 'l' | 'xl';
 export type ReleaseStatus = 'planned' | 'active' | 'released';
 export type WorkKind = 'feature' | 'bug' | 'polish' | 'performance' | 'chore';
 export type BugSeverity = 'low' | 'medium' | 'high' | 'blocker';
-export type ViewId = 'focus' | 'inbox' | 'board' | 'timeline' | 'releases' | 'list' | 'archive' | 'settings';
+export type ViewId = 'focus' | 'inbox' | 'board' | 'qa' | 'timeline' | 'releases' | 'list' | 'archive' | 'settings';
 
 export interface ChecklistItem {
   id: string;
