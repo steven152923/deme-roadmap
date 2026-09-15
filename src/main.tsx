@@ -7,6 +7,7 @@ import './work.css';
 import './v5.css';
 import './connected.css';
 import './ops.css';
+import './ops-search.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
