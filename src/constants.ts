@@ -46,6 +46,7 @@ export const VIEW_TITLES: Record<ViewId, { eyebrow: string; title: string }> = {
   focus: { eyebrow: 'your little Deme control room', title: 'What matters now' },
   inbox: { eyebrow: 'thoughts before they become tasks', title: 'Idea inbox' },
   board: { eyebrow: 'one release, one cute little flow', title: 'Release board' },
+  qa: { eyebrow: 'release candidate quality control', title: 'QA test runs' },
   timeline: { eyebrow: 'the next few months', title: 'Roadmap' },
   releases: { eyebrow: 'one release, one cute little flow', title: 'Release board' },
   list: { eyebrow: 'everything, without the clutter', title: 'All items' },
