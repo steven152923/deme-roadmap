@@ -1,11 +1,11 @@
-import type { Effort, Priority, Stage, ViewId } from './types';
+import type { BugSeverity, Effort, Priority, Stage, ViewId, WorkKind } from './types';
 
 export const STAGES: { id: Stage; label: string; short: string; hint: string }[] = [
-  { id: 'ideas', label: 'Ideas', short: 'Ideas', hint: 'Capture it before it disappears' },
   { id: 'planned', label: 'Planned', short: 'Planned', hint: 'Ready to pick up' },
-  { id: 'progress', label: 'In progress', short: 'Building', hint: 'Actively being built' },
+  { id: 'progress', label: 'Working on', short: 'Working', hint: 'Actively being built' },
   { id: 'testing', label: 'Testing', short: 'Testing', hint: 'QA, feedback and fixes' },
-  { id: 'shipped', label: 'Shipped', short: 'Shipped', hint: 'Out in the world' },
+  { id: 'ideas', label: 'Bugs', short: 'Bugs', hint: 'Issues waiting for a fix' },
+  { id: 'shipped', label: 'Completed', short: 'Done', hint: 'Finished and out of the way' },
 ];
 
 export const STAGE_LABEL = Object.fromEntries(STAGES.map((stage) => [stage.id, stage.label])) as Record<Stage, string>;
@@ -27,12 +27,27 @@ export const EFFORTS: { id: Effort; label: string }[] = [
   { id: 'xl', label: 'XL' },
 ];
 
+export const WORK_KINDS: { id: WorkKind; label: string; hint: string }[] = [
+  { id: 'feature', label: 'Feature', hint: 'Something new for Deme' },
+  { id: 'bug', label: 'Bug', hint: 'Something broken that needs fixing' },
+  { id: 'polish', label: 'Polish', hint: 'UI, UX or visual refinement' },
+  { id: 'performance', label: 'Performance', hint: 'Speed, stability or memory work' },
+  { id: 'chore', label: 'Chore', hint: 'Maintenance, cleanup or admin work' },
+];
+
+export const BUG_SEVERITIES: { id: BugSeverity; label: string }[] = [
+  { id: 'low', label: 'Low' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'high', label: 'High' },
+  { id: 'blocker', label: 'Blocker' },
+];
+
 export const VIEW_TITLES: Record<ViewId, { eyebrow: string; title: string }> = {
   focus: { eyebrow: 'your little Deme control room', title: 'What matters now' },
   inbox: { eyebrow: 'thoughts before they become tasks', title: 'Idea inbox' },
-  board: { eyebrow: 'everything finding its place', title: 'Board' },
+  board: { eyebrow: 'one release, one cute little flow', title: 'Release board' },
   timeline: { eyebrow: 'the next few months', title: 'Roadmap' },
-  releases: { eyebrow: 'versions we are growing toward', title: 'Releases' },
+  releases: { eyebrow: 'one release, one cute little flow', title: 'Release board' },
   list: { eyebrow: 'everything, without the clutter', title: 'All items' },
   archive: { eyebrow: 'sleeping ideas live here', title: 'Archive' },
   settings: { eyebrow: 'make the space yours', title: 'Settings' },

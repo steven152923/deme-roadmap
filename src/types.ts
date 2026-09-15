@@ -2,6 +2,8 @@ export type Stage = 'ideas' | 'planned' | 'progress' | 'testing' | 'shipped';
 export type Priority = 'low' | 'normal' | 'high' | 'critical';
 export type Effort = 'xs' | 's' | 'm' | 'l' | 'xl';
 export type ReleaseStatus = 'planned' | 'active' | 'released';
+export type WorkKind = 'feature' | 'bug' | 'polish' | 'performance' | 'chore';
+export type BugSeverity = 'low' | 'medium' | 'high' | 'blocker';
 export type ViewId = 'focus' | 'inbox' | 'board' | 'timeline' | 'releases' | 'list' | 'archive' | 'settings';
 
 export interface ChecklistItem {
@@ -33,6 +35,9 @@ export interface RoadmapCard {
   title: string;
   description: string;
   stage: Stage;
+  kind: WorkKind;
+  bugSeverity: BugSeverity;
+  today: boolean;
   area: string;
   priority: Priority;
   effort: Effort;
@@ -79,7 +84,7 @@ export interface ActivityEntry {
 }
 
 export interface RoadmapData {
-  version: 3;
+  version: 4;
   cards: RoadmapCard[];
   releases: RoadmapRelease[];
   settings: RoadmapSettings;
