@@ -32,7 +32,7 @@ async function readRoadmap(fallback) {
       try {
         await fs.copyFile(roadmapPath(), brokenPath);
       } catch {
-        // Keep startup resilient even if the recovery copy cannot be written.
+        // Startup should remain resilient even if the recovery copy cannot be written.
       }
     }
     await writeRoadmap(fallback);
@@ -42,17 +42,17 @@ async function readRoadmap(fallback) {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1480,
-    height: 920,
+    width: 1500,
+    height: 930,
     minWidth: 1120,
     minHeight: 700,
-    backgroundColor: '#0b0a0f',
+    backgroundColor: '#09080c',
     title: 'Deme Roadmap',
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
-      color: '#0b0a0f',
+      color: '#09080c',
       symbolColor: '#aaa4b7',
       height: 44,
     },
@@ -71,6 +71,10 @@ function createWindow() {
       shell.openExternal(url);
     }
     return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!isDev && url !== mainWindow.webContents.getURL()) event.preventDefault();
   });
 
   if (isDev) {
@@ -111,6 +115,10 @@ ipcMain.handle('roadmap:import', async () => {
   return { canceled: false, data: parsed };
 });
 ipcMain.handle('roadmap:data-path', () => roadmapPath());
+ipcMain.handle('roadmap:reveal-data', () => {
+  shell.showItemInFolder(roadmapPath());
+  return { ok: true };
+});
 
 app.whenReady().then(() => {
   app.setAppUserModelId('com.demeapp.roadmap');
