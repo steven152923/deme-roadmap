@@ -1,10 +1,10 @@
 {
   "name": "deme-roadmap",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "author": "Deme App LTD",
-  "description": "A private, customisable local-first Windows roadmap, QA and launch workspace for Deme.",
+  "description": "A private, connected local-first Windows roadmap, QA, launch and Wi-Fi companion workspace for Deme.",
   "main": "electron/main.cjs",
   "scripts": {
     "prepare:qa": "node scripts/generate-qa-catalog.mjs",
@@ -19,7 +19,8 @@
   "dependencies": {
     "lucide-react": "^1.46.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",
@@ -36,9 +37,20 @@
     "appId": "com.demeapp.roadmap",
     "productName": "Deme Roadmap",
     "artifactName": "Deme-Roadmap-Setup-${version}.${ext}",
-    "files": ["dist/**/*", "electron/**/*", "package.json"],
-    "directories": { "output": "release" },
-    "win": { "target": ["nsis"], "icon": "build/icon.svg" },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.svg"
+    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
